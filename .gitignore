@@ -33,6 +33,7 @@
 
 # IDE
 .vs
+*.json
 
 # Build
 out
