@@ -17,9 +17,9 @@ bool iterate = false;
 
 int width = 1, height = 1;
 bool moving = false;
-glm::vec2 pos(0.0f);
+glm::dvec2 pos(0.0);
 
-fractals::Viewport viewport(0.0f, 0.0f, 0.0f, 10.0f);
+fractals::Viewport viewport(0.0, 0.0, 0.0, 10.0);
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
@@ -79,12 +79,7 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 		{
 			moving = true;
 
-			double xpos, ypos;
-
-			glfwGetCursorPos(window, &xpos, &ypos);
-
-			pos.x = float(xpos);
-			pos.y = float(ypos);
+			glfwGetCursorPos(window, &pos.x, &pos.y);
 		}
 		else if (action == GLFW_RELEASE)
 		{
@@ -97,9 +92,9 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
 	if (moving)
 	{
-		glm::vec2 newPos(xpos, ypos);
+		glm::dvec2 newPos(xpos, ypos);
 
-		glm::vec2 offset = (newPos - pos) / glm::vec2(width, height) * glm::vec2(viewport.left - viewport.right, viewport.top - viewport.bottom);
+		glm::dvec2 offset = (newPos - pos) / glm::dvec2(width, height) * glm::dvec2(viewport.left - viewport.right, viewport.top - viewport.bottom);
 
 		viewport.left += offset.x;
 		viewport.right += offset.x;
@@ -112,15 +107,15 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
-	float x = (viewport.left + viewport.right) / 2.0f;
-	float y = (viewport.bottom + viewport.top) / 2.0f;
+	double x = (viewport.left + viewport.right) / 2.0;
+	double y = (viewport.bottom + viewport.top) / 2.0;
 
-	float factor = glm::pow(1.05f, -yoffset);
+	double factor = glm::pow(1.05, -yoffset);
 
-	viewport.right = (viewport.right - viewport.left) / 2.0f;
+	viewport.right = (viewport.right - viewport.left) / 2.0;
 	viewport.left = -viewport.right;
 
-	viewport.top = (viewport.top - viewport.bottom) / 2.0f;
+	viewport.top = (viewport.top - viewport.bottom) / 2.0;
 	viewport.bottom = -viewport.top;
 
 	viewport.viewport *= factor;
@@ -208,13 +203,15 @@ int main()
 
 			if (fractal)
 			{
-				float x = (viewport.left + viewport.right) / 2.0f;
+				double x = (viewport.left + viewport.right) / 2.0;
 
-				viewport.right = (viewport.top - viewport.bottom) / 2.0f;
+				viewport.right = (viewport.top - viewport.bottom) / 2.0;
 				viewport.left = -viewport.right;
 
-				viewport.left *= float(width) / float(height);
-				viewport.right *= float(width) / float(height);
+				double factor = double(width) / double(height);
+
+				viewport.left *= factor;
+				viewport.right *= factor;
 
 				viewport.left += x;
 				viewport.right += x;

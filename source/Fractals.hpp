@@ -6,13 +6,13 @@ namespace fractals
 {
 	struct Viewport
 	{
-		Viewport(const glm::vec4& viewport = glm::vec4(0.0f)) :
+		Viewport(const glm::dvec4& viewport = glm::dvec4(0.0)) :
 			viewport(viewport)
 		{
 
 		}
 
-		Viewport(const float left, const float right, const float bottom, const float top) :
+		Viewport(const double left, const double right, const double bottom, const double top) :
 			left(left), right(right), bottom(bottom), top(top)
 		{
 
@@ -20,11 +20,11 @@ namespace fractals
 
 		union
 		{
-			glm::vec4 viewport;
+			glm::dvec4 viewport;
 
 			struct
 			{
-				float left, right, bottom, top;
+				double left, right, bottom, top;
 			};
 		};
 	};
@@ -364,8 +364,11 @@ namespace fractals
 			glUniform2iv(this->locationSize, 1, reinterpret_cast<const GLint*>(&this->size));
 			glUniform2iv(this->locationResolution, 1, reinterpret_cast<const GLint*>(&resolution));
 
-			glUniform4fv(this->locationViewport, 1, reinterpret_cast<const GLfloat*>(&this->viewport));
-			glUniform4fv(this->locationViewportRequested, 1, reinterpret_cast<const GLfloat*>(&viewport));
+			glm::vec4 fViewport(this->viewport.viewport);
+			glm::vec4 fViewportRequested(viewport.viewport);
+
+			glUniform4fv(this->locationViewport, 1, reinterpret_cast<const GLfloat*>(&fViewport));
+			glUniform4fv(this->locationViewportRequested, 1, reinterpret_cast<const GLfloat*>(&fViewportRequested));
 
 			glBindTexture(GL_TEXTURE_2D, this->textureColor);
 
