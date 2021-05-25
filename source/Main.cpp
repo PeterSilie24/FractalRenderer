@@ -1,79 +1,134 @@
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
-#include <glad/glad.h>
-#include <glm/glm.hpp>
-
-#include <iostream>
-#include <string>
-#include <vector>
-#include <memory>
-#include <cmath>
-
-#define CODE(code) std::string(#code)
-
-#define glCreate(type) [](){ GLuint id; glGen##type##s(1, &id); return id; }
-#define glDelete(type) [](const GLuint id){ glDelete##type##s(1, &id); }
-
-template <typename T>
-class RAIIWrapper : protected std::shared_ptr<T>
-{
-public:
-	template <typename Deleter>
-	RAIIWrapper(const T& t, Deleter deleter) :
-		std::shared_ptr<T>(new T(t), [=](const T* t) { deleter(*t); delete t; })
-	{
-
-	}
-
-	operator T()
-	{
-		return this->operator*();
-	}
-
-	operator const T() const
-	{
-		return this->operator*();
-	}
-
-	operator bool() const
-	{
-		return this->operator bool();
-	}
-};
+#include "OpenGLHelper.hpp"
+#include "Fractals.hpp"
 
 void glfwErrorCallback(int error, const char* description)
 {
 	std::cout << "GLFW-Error: " << description << std::endl;
 }
 
-std::vector<glm::vec3> sierpinskiIteration(const std::vector<glm::vec3>& vertices)
+void APIENTRY glErrorCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
 {
-	std::vector<glm::vec3> newVertices;
+	std::cout << "GL-Message: " << message << std::endl;
+}
 
-	for (std::size_t i = 0; i < vertices.size() / 3; i++)
+std::shared_ptr<fractals::Fractal> fractal;
+
+bool iterate = false;
+
+int width = 1, height = 1;
+bool moving = false;
+glm::vec2 pos(0.0f);
+
+fractals::Viewport viewport(0.0f, 0.0f, 0.0f, 10.0f);
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	if (action == GLFW_PRESS)
 	{
-		const glm::vec3& v1 = vertices[3 * i + 0];
-		const glm::vec3& v2 = vertices[3 * i + 1];
-		const glm::vec3& v3 = vertices[3 * i + 2];
+		switch (key)
+		{
+		case GLFW_KEY_F:
+		{
+			fractal = nullptr;
 
-		glm::vec3 offset1(0.0f, 0.0f, 0.0f);
-		glm::vec3 offset2(0.0f, 0.5f, 0.0f);
-		glm::vec3 offset3(0.5f, 0.0f, 0.0f);
+			fractal = std::make_shared<fractals::BarnsleyFern>(glm::ivec2(1080 * 8, 1920 * 8));
 
-		newVertices.push_back(0.5f * v1 + offset1);
-		newVertices.push_back(0.5f * v2 + offset1);
-		newVertices.push_back(0.5f * v3 + offset1);
+			break;
+		}
+		case GLFW_KEY_T:
+		{
+			fractal = nullptr;
 
-		newVertices.push_back(0.5f * v1 + offset2);
-		newVertices.push_back(0.5f * v2 + offset2);
-		newVertices.push_back(0.5f * v3 + offset2);
+			fractal = std::make_shared<fractals::SierpinskiTriangle>(glm::ivec2(1920 * 8, 1080 * 8));
 
-		newVertices.push_back(0.5f * v1 + offset3);
-		newVertices.push_back(0.5f * v2 + offset3);
-		newVertices.push_back(0.5f * v3 + offset3);
+			break;
+		}
+		case GLFW_KEY_SPACE:
+		{
+			if (fractal)
+			{
+				fractal->iterate();
+			}
+
+			break;
+		}
+		case GLFW_KEY_ENTER:
+		{
+			iterate = !iterate;
+
+			break;
+		}
+		case GLFW_KEY_BACKSPACE:
+		{
+			if (fractal)
+			{
+				fractal->reset();
+			}
+
+			break;
+		}
+		}
 	}
+}
 
-	return newVertices;
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+	if (button == GLFW_MOUSE_BUTTON_LEFT)
+	{
+		if (action == GLFW_PRESS)
+		{
+			moving = true;
+
+			double xpos, ypos;
+
+			glfwGetCursorPos(window, &xpos, &ypos);
+
+			pos.x = float(xpos);
+			pos.y = float(ypos);
+		}
+		else if (action == GLFW_RELEASE)
+		{
+			moving = false;
+		}
+	}
+}
+
+void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+{
+	if (moving)
+	{
+		glm::vec2 newPos(xpos, ypos);
+
+		glm::vec2 offset = (newPos - pos) / glm::vec2(width, height) * glm::vec2(viewport.left - viewport.right, viewport.top - viewport.bottom);
+
+		viewport.left += offset.x;
+		viewport.right += offset.x;
+		viewport.bottom += offset.y;
+		viewport.top += offset.y;
+
+		pos = newPos;
+	}
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+	float x = (viewport.left + viewport.right) / 2.0f;
+	float y = (viewport.bottom + viewport.top) / 2.0f;
+
+	float factor = glm::pow(1.05f, -yoffset);
+
+	viewport.right = (viewport.right - viewport.left) / 2.0f;
+	viewport.left = -viewport.right;
+
+	viewport.top = (viewport.top - viewport.bottom) / 2.0f;
+	viewport.bottom = -viewport.top;
+
+	viewport.viewport *= factor;
+
+	viewport.left += x;
+	viewport.right += x;
+	viewport.bottom += y;
+	viewport.top += y;
 }
 
 int main()
@@ -93,7 +148,7 @@ int main()
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	RAIIWrapper<GLFWwindow*> window(glfwCreateWindow(640, 480, "FractalRenderer", nullptr, nullptr), glfwDestroyWindow);
+	RAIIWrapper<GLFWwindow*> window(glfwCreateWindow(1920, 1080, "FractalRenderer", nullptr, nullptr), glfwDestroyWindow);
 
 	if (!window)
 	{
@@ -109,135 +164,72 @@ int main()
 		return -1;
 	}
 
+	glfwSetKeyCallback(window, keyCallback);
+
+	glfwSetMouseButtonCallback(window, mouseButtonCallback);
+
+	glfwSetCursorPosCallback(window, cursorPosCallback);
+
+	glfwSetScrollCallback(window, scrollCallback);
+	
+	/*if (gl::extensionAvailable("GL_ARB_debug_output"))
+	{
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB);
+
+		glDebugMessageCallbackARB(glErrorCallback, nullptr);
+	}*/
+
 	glfwSwapInterval(1);
-
-	RAIIWrapper<GLuint> program(glCreateProgram(), glDeleteProgram);
-
-	{
-		GLint success;
-		std::vector<GLchar> infoLog(1024);
-
-		RAIIWrapper<GLuint> vertexShader(glCreateShader(GL_VERTEX_SHADER), glDeleteShader);
-
-		auto vertexShaderCode = CODE(
-			#version 330 core \n
-
-			layout(location = 0) in vec3 position;
-
-			void main()
-			{
-				gl_Position = vec4(position.xy * 2.0 - 1.0, 0.0, 1.0);
-			}
-		);
-
-		auto vertexShaderSource = vertexShaderCode.c_str();
-
-		glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
-		glCompileShader(vertexShader);
-
-		glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-		
-		if (!success)
-		{
-			glGetShaderInfoLog(vertexShader, infoLog.size(), nullptr, infoLog.data());
-
-			std::cout << "GL-Error: Failed to compile vertex shader:\n" << infoLog.data() << std::endl;
-
-			return -1;
-		}
-
-		RAIIWrapper<GLuint> fragmentShader(glCreateShader(GL_FRAGMENT_SHADER), glDeleteShader);
-
-		auto fragmentShaderCode = CODE(
-			#version 330 core \n
-
-			out vec4 color;
-
-			void main()
-			{
-				color = vec4(1.0f);
-			}
-		);
-
-		auto fragmentShaderSource = fragmentShaderCode.c_str();
-
-		glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
-		glCompileShader(fragmentShader);
-
-		glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-
-		if (!success)
-		{
-			glGetShaderInfoLog(fragmentShader, infoLog.size(), nullptr, infoLog.data());
-
-			std::cout << "GL-Error: Failed to compile fragment shader:\n" << infoLog.data() << std::endl;
-
-			return -1;
-		}
-
-		glAttachShader(program, vertexShader);
-		glAttachShader(program, fragmentShader);
-
-		glLinkProgram(program);
-
-		glGetProgramiv(program, GL_LINK_STATUS, &success);
-
-		if (!success)
-		{
-			glGetProgramInfoLog(program, infoLog.size(), nullptr, infoLog.data());
-
-			std::cout << "GL-Error: Failed to link program:\n" << infoLog.data() << std::endl;
-
-			return -1;
-		}
-	}
-
-	glUseProgram(program);
-
-	std::vector<glm::vec3> vertices({
-			{ 1.0f, 1.0f, 1.0f },
-			{ 1.0f, 0.0f, 1.0f },
-			{ 0.0f, 1.0f, 1.0f }
-		});
-
-	std::vector<glm::vec3> tmpVertices = vertices;
-
-	for (int i = 0; i < 9; i++)
-	{
-		tmpVertices = sierpinskiIteration(tmpVertices);
-
-		vertices.insert(vertices.end(), tmpVertices.begin(), tmpVertices.end());
-	}
 
 	RAIIWrapper<GLuint> vertexArray(glCreate(VertexArray)(), glDelete(VertexArray));
 
 	glBindVertexArray(vertexArray);
 
-	RAIIWrapper<GLuint> vertexBuffer(glCreate(Buffer)(), glDelete(Buffer));
-
-	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
-
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
-
-	while (!glfwWindowShouldClose(window))
+	try
 	{
-		glfwPollEvents();
+		while (!glfwWindowShouldClose(window))
+		{
+			glfwPollEvents();
 
-		int width, height;
-		glfwGetFramebufferSize(window, &width, &height);
+			if (iterate)
+			{
+				if (fractal)
+				{
+					fractal->iterate();
+				}
+			}
 
-		glViewport(0, 0, width, height);
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+			glfwGetFramebufferSize(window, &width, &height);
 
-		glUseProgram(program);
-		glBindVertexArray(vertexArray);
+			glViewport(0, 0, width, height);
 
-		glDrawArrays(GL_TRIANGLES, 0, vertices.size());
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
 
-		glfwSwapBuffers(window);
+			if (fractal)
+			{
+				float x = (viewport.left + viewport.right) / 2.0f;
+
+				viewport.right = (viewport.top - viewport.bottom) / 2.0f;
+				viewport.left = -viewport.right;
+
+				viewport.left *= float(width) / float(height);
+				viewport.right *= float(width) / float(height);
+
+				viewport.left += x;
+				viewport.right += x;
+
+				fractal->render(glm::ivec2(width, height), viewport);
+			}
+
+			glfwSwapBuffers(window);
+
+			//std::this_thread::sleep_for(std::chrono::seconds(1));
+		}
+	}
+	catch (const std::runtime_error & error)
+	{
+		std::cout << error.what() << std::endl;
 	}
 
 	return 0;
