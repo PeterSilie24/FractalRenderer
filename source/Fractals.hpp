@@ -178,7 +178,7 @@ namespace fractals
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			auto vertexShaderCode = CODE(
-				#version 330 core \n
+				#version 420 core \n
 
 				vec2 vertices[4] = vec2[](vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0));
 				int indices[6] = int[](0, 1, 2, 1, 2, 3);
@@ -190,12 +190,10 @@ namespace fractals
 			);
 
 			gl::requireExtension("GL_ARB_shader_image_load_store");
-			gl::requireExtension("GL_ARB_shading_language_420pack");
 
 			auto fragmentShaderCode = CODE(
-				#version 330 core \n
+				#version 420 core \n
 				#extension GL_ARB_shader_image_load_store : enable \n
-				#extension GL_ARB_shading_language_420pack : enable \n
 
 				precision highp float;
 
@@ -264,7 +262,7 @@ namespace fractals
 
 			
 			fragmentShaderCode = CODE(
-				#version 330 core \n
+				#version 420 core \n
 
 				precision highp float;
 
