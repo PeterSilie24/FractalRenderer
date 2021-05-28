@@ -115,7 +115,7 @@ namespace fractals
 
 			glBindTexture(GL_TEXTURE_2D, this->textureSet);
 
-			this->pixels = std::vector<std::uint32_t>(size.x * size.y, std::numeric_limits<std::uint32_t>::max());
+			this->pixels = std::vector<std::uint32_t>(std::size_t(size.x) * std::size_t(size.y), std::numeric_limits<std::uint32_t>::max());
 
 			if (indicator)
 			{
@@ -274,8 +274,6 @@ namespace fractals
 				uniform vec4 viewport;
 				uniform vec4 viewportRequested;
 
-				in vec2 texCoords;
-
 				out vec4 color;
 
 				vec2 fromScreen(const vec2 screen, const vec4 viewport)
@@ -416,6 +414,446 @@ namespace fractals
 			Affine(size, Viewport(0.0f, 1.0f, 0.0f, 1.0f), this->createAffineTransforms())
 		{
 
+		}
+	};
+
+	class Mandelbrot : public Fractal
+	{
+	private:
+		glm::ivec2 resolution;
+		Viewport viewport;
+		std::int32_t oversampling;
+
+		glm::ivec2 size;
+		GLuint currentIteration;
+
+		RAIIWrapper<GLuint> textureValues;
+		RAIIWrapper<GLuint> textureIterations;
+		RAIIWrapper<GLuint> textureColor;
+
+		RAIIWrapper<GLuint> framebuffer;
+		RAIIWrapper<GLuint> programClear;
+		RAIIWrapper<GLuint> programIterate;
+		GLint locationBound;
+		GLint locationCurrentIteration;
+		GLint locationSize;
+		GLint locationViewport;
+
+		RAIIWrapper<GLuint> programRender;
+		GLint locationResolution;
+
+		RAIIWrapper<GLuint> programUpdate;
+		GLint locationSizeUpdate;
+		GLint locationSizeOldUpdate;
+		GLint locationViewportUpdate;
+		GLint locationViewportOldUpdate;
+
+		static inline RAIIWrapper<GLuint> createTextureValues(const glm::ivec2& size)
+		{
+			RAIIWrapper<GLuint> textureValues(glCreate(Texture)(), glDelete(Texture));
+
+			glBindTexture(GL_TEXTURE_2D, textureValues);
+
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32UI, size.x, size.y, 0, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, nullptr);
+
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+			return textureValues;
+		}
+
+		static inline RAIIWrapper<GLuint> createTextureIterations(const glm::ivec2& size)
+		{
+			RAIIWrapper<GLuint> textureIterations(glCreate(Texture)(), glDelete(Texture));
+
+			glBindTexture(GL_TEXTURE_2D, textureIterations);
+
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32UI, size.x, size.y, 0, GL_RG_INTEGER, GL_UNSIGNED_BYTE, nullptr);
+
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+			return textureIterations;
+		}
+
+		static inline RAIIWrapper<GLuint> createTextureColor(const glm::ivec2& size)
+		{
+			RAIIWrapper<GLuint> textureColor = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
+
+			glBindTexture(GL_TEXTURE_2D, textureColor);
+
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+			return textureColor;
+		}
+
+		static inline RAIIWrapper<GLuint> createFramebuffer(const RAIIWrapper<GLuint>& textureValues, const RAIIWrapper<GLuint>& textureIterations, const RAIIWrapper<GLuint>& textureColor)
+		{
+			RAIIWrapper<GLuint> framebuffer(glCreate(Framebuffer)(), glDelete(Framebuffer));
+
+			glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+			glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textureValues, 0);
+			glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, textureIterations, 0);
+			glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, textureColor, 0);
+
+			GLenum drawBuffers[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+
+			glDrawBuffers(3, drawBuffers);
+
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			{
+				throw std::runtime_error("GL-Error: Framebuffer not completed.");
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			return framebuffer;
+		}
+
+		void initialize(const glm::ivec2& resolution, const std::int32_t oversampling)
+		{
+			this->resolution = resolution;
+			this->oversampling = oversampling;
+
+			this->size = resolution * oversampling;
+
+			this->textureValues = this->createTextureValues(this->size);
+
+			this->textureIterations = this->createTextureIterations(this->size);
+
+			this->textureColor = this->createTextureColor(this->size);
+
+			this->framebuffer = this->createFramebuffer(this->textureValues, this->textureIterations, this->textureColor);
+
+			this->reset();
+		}
+
+		void update(const glm::ivec2& resolution, const Viewport& viewport)
+		{
+			glm::ivec2 size = resolution * this->oversampling;
+
+			RAIIWrapper<GLuint> textureValues = this->createTextureValues(size);
+
+			RAIIWrapper<GLuint> textureIterations = this->createTextureIterations(size);
+
+			RAIIWrapper<GLuint> textureColor = this->createTextureColor(size);
+
+			this->framebuffer = this->createFramebuffer(textureValues, textureIterations, textureColor);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
+
+			glViewport(0, 0, size.x, size.y);
+
+			glUseProgram(this->programUpdate);
+
+			glUniform2iv(this->locationSizeUpdate, 1, reinterpret_cast<const GLint*>(&size));
+			glUniform2iv(this->locationSizeOldUpdate, 1, reinterpret_cast<const GLint*>(&this->size));
+			glUniform4dv(this->locationViewportUpdate, 1, reinterpret_cast<const GLdouble*>(&viewport));
+			glUniform4dv(this->locationViewportOldUpdate, 1, reinterpret_cast<const GLdouble*>(&this->viewport));
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, this->textureIterations);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, this->textureValues);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glBindTexture(GL_TEXTURE_2D, textureColor);
+
+			glGenerateMipmap(GL_TEXTURE_2D);
+
+			this->currentIteration = 0;
+
+			this->textureValues = textureValues;
+
+			this->textureIterations = textureIterations;
+
+			this->textureColor = textureColor;
+
+			this->resolution = resolution;
+			this->viewport = viewport;
+
+			this->size = size;
+		}
+
+	public:
+		Mandelbrot(const glm::ivec2& resolution, const Viewport& viewport, const std::int32_t oversampling = 2) :
+			resolution(resolution), viewport(viewport), oversampling(oversampling)
+		{
+			auto vertexShaderCode = CODE(
+				#version 420 core \n
+
+				vec2 vertices[4] = vec2[](vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0));
+				int indices[6] = int[](0, 1, 2, 1, 2, 3);
+
+				void main()
+				{
+					gl_Position = vec4(vertices[indices[gl_VertexID]] * 2.0 - vec2(1.0), 0.0, 1.0);
+				}
+			);
+
+			auto fragmentShaderCode = CODE(
+				#version 420 core \n
+				#extension GL_ARB_gpu_shader_fp64 : enable \n
+
+				precision highp float;
+
+				layout(location = 0) out uvec4 value;
+				layout(location = 1) out uvec4 iterations;
+				layout(location = 2) out vec4 color;
+
+				void main()
+				{
+					value = uvec4(0);
+					iterations = uvec4(0);
+					color = vec4(0.0, 0.0, 0.0, 1.0);
+				}
+			);
+
+			this->programClear = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
+
+
+			fragmentShaderCode = CODE(
+				#version 420 core \n
+				#extension GL_ARB_gpu_shader_fp64 : enable \n
+
+				precision highp float;
+
+				layout(binding = 0) uniform usampler2D samplerValues;
+				layout(binding = 1) uniform usampler2D samplerIterations;
+
+				uniform double bound;
+				uniform uint currentIteration;
+
+				uniform ivec2 size;
+				uniform dvec4 viewport;
+
+				layout(location = 0) out uvec4 value;
+				layout(location = 1) out uvec4 iterations;
+				layout(location = 2) out vec4 color;
+
+				void main()
+				{
+					ivec2 pixel = ivec2(gl_FragCoord.xy);
+
+					uvec4 oldValue = texelFetch(samplerValues, pixel, 0);
+
+					dvec2 z = dvec2(packDouble2x32(oldValue.xy), packDouble2x32(oldValue.zw));
+
+					iterations = texelFetch(samplerIterations, pixel, 0);
+
+					color = vec4(0.0, 0.0, 0.0, 1.0);
+
+					dvec2 c = mix(viewport.xz, viewport.yw, dvec2(gl_FragCoord.xy) / size);
+
+					if (z.x != 1.0 / 0.0)
+					{
+						for (int i = 0; i < 25; i++)
+						{
+							z = dvec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+
+							iterations.r++;
+
+							if (z.x * z.x + z.y * z.y > bound * bound)
+							{
+								z.x = 1.0 / 0.0;
+
+								break;
+							}
+						}
+					}
+
+					if (z.x == 1.0 / 0.0)
+					{
+						color.r = pow(sin(float(iterations.r) / 10.0), 2.0);
+					}
+					else if (currentIteration <= iterations.g)
+					{
+						color.r = pow(sin(float(iterations.g) / 10.0), 2.0);
+					}
+
+					value.xy = unpackDouble2x32(z.x);
+					value.zw = unpackDouble2x32(z.y);
+				}
+			);
+
+			this->programIterate = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
+
+			this->locationBound = glGetUniformLocation(this->programIterate, "bound");
+			this->locationCurrentIteration = glGetUniformLocation(this->programIterate, "currentIteration");
+
+			this->locationSize = glGetUniformLocation(this->programIterate, "size");
+			this->locationViewport = glGetUniformLocation(this->programIterate, "viewport");
+
+
+			fragmentShaderCode = CODE(
+				#version 420 core \n
+
+				precision highp float;
+
+				uniform sampler2D sampler;
+
+				uniform ivec2 resolution;
+
+				out vec4 color;
+
+				void main()
+				{
+					vec2 screen = gl_FragCoord.xy / resolution;
+
+					color = texture(sampler, screen);
+				}
+			);
+
+			this->programRender = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
+
+			this->locationResolution = glGetUniformLocation(this->programRender, "resolution");
+
+			fragmentShaderCode = CODE(
+				#version 420 core \n
+				#extension GL_ARB_gpu_shader_fp64 : enable \n
+
+				precision highp float;
+				
+				layout(binding = 0) uniform usampler2D samplerValues;
+				layout(binding = 1) uniform usampler2D samplerIterations;
+
+				uniform ivec2 size;
+				uniform ivec2 sizeOld;
+
+				uniform dvec4 viewport;
+				uniform dvec4 viewportOld;
+
+				layout(location = 0) out uvec4 value;
+				layout(location = 1) out uvec4 iterations;
+				layout(location = 2) out vec4 color;
+
+				void main()
+				{
+					dvec2 screen = dvec2(gl_FragCoord.xy) / size;
+
+					dvec2 pos = mix(viewport.xz, viewport.yw, screen);
+
+					dvec2 screenOld = (pos - viewportOld.xz) / (viewportOld.yw - viewportOld.xz);
+
+					dvec2 fragCoordOld = screenOld * sizeOld;
+
+					ivec2 pixel = ivec2(fragCoordOld);
+
+					uvec4 iterationsOld = texelFetch(samplerIterations, pixel, 0);
+
+					uvec4 oldValue = texelFetch(samplerValues, pixel, 0);
+
+					dvec2 z = dvec2(packDouble2x32(oldValue.xy), packDouble2x32(oldValue.zw));
+
+					value = uvec4(0);
+					iterations = uvec4(0, 0, 0, 0);
+					color = vec4(0.0, 0.0, 0.0, 1.0);
+
+					if (z.x == 1.0 / 0.0)
+					{
+						iterations.g = iterationsOld.r;
+					}
+					else if (iterationsOld.r < iterationsOld.g)
+					{
+						iterations.g = iterationsOld.g;
+					}
+				}
+			);
+
+			this->programUpdate = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
+
+			this->locationSizeUpdate = glGetUniformLocation(this->programUpdate, "size");
+			this->locationSizeOldUpdate = glGetUniformLocation(this->programUpdate, "sizeOld");
+
+			this->locationViewportUpdate = glGetUniformLocation(this->programUpdate, "viewport");
+			this->locationViewportOldUpdate = glGetUniformLocation(this->programUpdate, "viewportOld");
+
+			this->initialize(resolution, oversampling);
+		}
+
+		virtual void reset() override
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
+
+			glViewport(0, 0, this->size.x, this->size.y);
+
+			glUseProgram(this->programClear);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, this->textureIterations);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, this->textureValues);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glBindTexture(GL_TEXTURE_2D, this->textureColor);
+
+			glGenerateMipmap(GL_TEXTURE_2D);
+
+			this->currentIteration = 0;
+		}
+
+		virtual void iterate(const std::int32_t iterations) override
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
+
+			for (std::int32_t i = 0; i < iterations; i++)
+			{
+				glViewport(0, 0, this->size.x, this->size.y);
+
+				glUseProgram(this->programIterate);
+
+				glUniform1d(this->locationBound, 2.0);
+				glUniform1ui(this->locationCurrentIteration, this->currentIteration);
+
+				glUniform2iv(this->locationSize, 1, reinterpret_cast<const GLint*>(&this->size));
+				glUniform4dv(this->locationViewport, 1, reinterpret_cast<const GLdouble*>(&this->viewport));
+
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, this->textureIterations);
+
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, this->textureValues);
+
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+
+				this->currentIteration += 25;
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glBindTexture(GL_TEXTURE_2D, this->textureColor);
+
+			glGenerateMipmap(GL_TEXTURE_2D);
+		}
+
+		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) override
+		{
+			glUseProgram(this->programRender);
+
+			glUniform2iv(this->locationResolution, 1, reinterpret_cast<const GLint*>(&resolution));
+
+			glBindTexture(GL_TEXTURE_2D, this->textureColor);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			if (resolution != this->resolution || viewport.viewport != this->viewport.viewport)
+			{
+				this->update(resolution, viewport);
+			}
 		}
 	};
 }

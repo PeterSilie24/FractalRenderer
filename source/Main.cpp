@@ -43,6 +43,14 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 
 			break;
 		}
+		case GLFW_KEY_M:
+		{
+			fractal = nullptr;
+
+			fractal = std::make_shared<fractals::Mandelbrot>(glm::ivec2(1920, 1080), viewport, 2);
+
+			break;
+		}
 		case GLFW_KEY_SPACE:
 		{
 			if (fractal)
