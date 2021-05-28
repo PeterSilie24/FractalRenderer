@@ -28,19 +28,34 @@ public:
 
 	}
 
+	bool valid() const
+	{
+		return this->get() != nullptr;
+	}
+
 	operator T()
 	{
-		return this->operator*();
+		if (this->valid())
+		{
+			return this->operator*();
+		}
+
+		return T(0);
 	}
 
 	operator const T() const
 	{
-		return this->operator*();
+		if (this->valid())
+		{
+			return this->operator*();
+		}
+
+		return T(0);
 	}
 
 	operator bool() const
 	{
-		return this->operator bool();
+		return this->valid();
 	}
 };
 

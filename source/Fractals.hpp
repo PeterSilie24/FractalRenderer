@@ -439,6 +439,12 @@ namespace fractals
 		GLint locationSize;
 		GLint locationViewport;
 
+		RAIIWrapper<GLuint> textureValuesBuffered;
+		RAIIWrapper<GLuint> textureIterationsBuffered;
+		RAIIWrapper<GLuint> textureColorBuffered;
+
+		RAIIWrapper<GLuint> framebufferBuffered;
+
 		RAIIWrapper<GLuint> programRender;
 		GLint locationResolution;
 
@@ -453,9 +459,9 @@ namespace fractals
 			RAIIWrapper<GLuint> textureValues(glCreate(Texture)(), glDelete(Texture));
 
 			glBindTexture(GL_TEXTURE_2D, textureValues);
-
+			
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32UI, size.x, size.y, 0, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, nullptr);
-
+			
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -467,12 +473,12 @@ namespace fractals
 			RAIIWrapper<GLuint> textureIterations(glCreate(Texture)(), glDelete(Texture));
 
 			glBindTexture(GL_TEXTURE_2D, textureIterations);
-
+			
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32UI, size.x, size.y, 0, GL_RG_INTEGER, GL_UNSIGNED_BYTE, nullptr);
-
+			
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
+			
 			return textureIterations;
 		}
 
@@ -481,9 +487,9 @@ namespace fractals
 			RAIIWrapper<GLuint> textureColor = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
 
 			glBindTexture(GL_TEXTURE_2D, textureColor);
-
+			
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-
+			
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
@@ -538,15 +544,47 @@ namespace fractals
 		{
 			glm::ivec2 size = resolution * this->oversampling;
 
-			RAIIWrapper<GLuint> textureValues = this->createTextureValues(size);
+			RAIIWrapper<GLuint> textureValues = this->textureValuesBuffered;
 
-			RAIIWrapper<GLuint> textureIterations = this->createTextureIterations(size);
+			RAIIWrapper<GLuint> textureIterations = this->textureIterationsBuffered;
 
-			RAIIWrapper<GLuint> textureColor = this->createTextureColor(size);
+			RAIIWrapper<GLuint> textureColor = this->textureColorBuffered;
 
-			this->framebuffer = this->createFramebuffer(textureValues, textureIterations, textureColor);
+			RAIIWrapper<GLuint> framebuffer = this->framebufferBuffered;
 
-			glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
+			bool valid = textureValues && textureIterations && textureColor && framebuffer;
+
+			if (resolution != this->resolution || !valid)
+			{
+				textureValues = this->createTextureValues(size);
+
+				textureIterations = this->createTextureIterations(size);
+
+				textureColor = this->createTextureColor(size);
+
+				framebuffer = this->createFramebuffer(textureValues, textureIterations, textureColor);
+
+				this->textureValuesBuffered = nullptr;
+
+				this->textureIterationsBuffered = nullptr;
+
+				this->textureColorBuffered = nullptr;
+
+				this->framebufferBuffered = nullptr;
+			}
+			
+			if (resolution == this->resolution)
+			{
+				this->textureValuesBuffered = this->textureValues;
+
+				this->textureIterationsBuffered = this->textureIterations;
+
+				this->textureColorBuffered = this->textureColor;
+
+				this->framebufferBuffered = this->framebuffer;
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 
 			glViewport(0, 0, size.x, size.y);
 
@@ -578,6 +616,8 @@ namespace fractals
 			this->textureIterations = textureIterations;
 
 			this->textureColor = textureColor;
+
+			this->framebuffer = framebuffer;
 
 			this->resolution = resolution;
 			this->viewport = viewport;
@@ -853,6 +893,8 @@ namespace fractals
 			if (resolution != this->resolution || viewport.viewport != this->viewport.viewport)
 			{
 				this->update(resolution, viewport);
+
+				glViewport(0, 0, resolution.x, resolution.y);
 			}
 		}
 	};
