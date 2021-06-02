@@ -397,5 +397,7 @@ int main()
 		std::cout << error.what() << std::endl;
 	}
 
+	fractal = nullptr;
+
 	return 0;
 }
