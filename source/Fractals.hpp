@@ -37,6 +37,21 @@ namespace fractals
 		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) = 0;
 
 		virtual void reset() = 0;
+
+		virtual Viewport getPreferredViewport() const
+		{
+			return Viewport(-1.0, 1.0, -1.0, 1.0);
+		}
+
+		virtual std::int32_t getPreferredIterationsPerFrame() const
+		{
+			return 1;
+		}
+
+		virtual void options()
+		{
+
+		}
 	};
 
 	struct AffineTransform
@@ -393,6 +408,11 @@ namespace fractals
 		{
 
 		}
+
+		virtual Viewport getPreferredViewport() const override
+		{
+			return Viewport(-2.2f, 2.7f, 0.0f, 10.0f);
+		}
 	};
 
 	class SierpinskiTriangle : public Affine
@@ -414,6 +434,11 @@ namespace fractals
 			Affine(size, Viewport(0.0f, 1.0f, 0.0f, 1.0f), this->createAffineTransforms())
 		{
 
+		}
+
+		virtual Viewport getPreferredViewport() const override
+		{
+			return Viewport(0.0f, 1.0f, 0.0f, 1.0f);
 		}
 	};
 
@@ -438,6 +463,7 @@ namespace fractals
 		GLint locationCurrentIteration;
 		GLint locationSize;
 		GLint locationViewport;
+		GLint locationIterationsPerFrame;
 
 		RAIIWrapper<GLuint> textureValuesBuffered;
 		RAIIWrapper<GLuint> textureIterationsBuffered;
@@ -540,9 +566,9 @@ namespace fractals
 			this->reset();
 		}
 
-		void update(const glm::ivec2& resolution, const Viewport& viewport)
+		void update(const glm::ivec2& resolution, const Viewport& viewport, const std::int32_t oversampling)
 		{
-			glm::ivec2 size = resolution * this->oversampling;
+			glm::ivec2 size = resolution * oversampling;
 
 			RAIIWrapper<GLuint> textureValues = this->textureValuesBuffered;
 
@@ -554,7 +580,7 @@ namespace fractals
 
 			bool valid = textureValues && textureIterations && textureColor && framebuffer;
 
-			if (resolution != this->resolution || !valid)
+			if (size != this->size || !valid)
 			{
 				textureValues = this->createTextureValues(size);
 
@@ -573,7 +599,7 @@ namespace fractals
 				this->framebufferBuffered = nullptr;
 			}
 			
-			if (resolution == this->resolution)
+			if (size == this->size)
 			{
 				this->textureValuesBuffered = this->textureValues;
 
@@ -621,12 +647,13 @@ namespace fractals
 
 			this->resolution = resolution;
 			this->viewport = viewport;
+			this->oversampling = oversampling;
 
 			this->size = size;
 		}
 
 	public:
-		Mandelbrot(const glm::ivec2& resolution, const Viewport& viewport, const std::int32_t oversampling = 2) :
+		Mandelbrot(const glm::ivec2& resolution, const Viewport& viewport, const std::int32_t oversampling = 2, const std::int32_t iterationsPerFrame = 25) :
 			resolution(resolution), viewport(viewport), oversampling(oversampling)
 		{
 			auto vertexShaderCode = CODE(
@@ -640,6 +667,8 @@ namespace fractals
 					gl_Position = vec4(vertices[indices[gl_VertexID]] * 2.0 - vec2(1.0), 0.0, 1.0);
 				}
 			);
+
+			gl::requireExtension("GL_ARB_gpu_shader_fp64");
 
 			auto fragmentShaderCode = CODE(
 				#version 420 core \n
@@ -677,6 +706,8 @@ namespace fractals
 				uniform ivec2 size;
 				uniform dvec4 viewport;
 
+				uniform int iterationsPerFrame;
+
 				layout(location = 0) out uvec4 value;
 				layout(location = 1) out uvec4 iterations;
 				layout(location = 2) out vec4 color;
@@ -697,7 +728,7 @@ namespace fractals
 
 					if (z.x != 1.0 / 0.0)
 					{
-						for (int i = 0; i < 25; i++)
+						for (int i = 0; i < iterationsPerFrame; i++)
 						{
 							z = dvec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
 
@@ -733,6 +764,8 @@ namespace fractals
 
 			this->locationSize = glGetUniformLocation(this->programIterate, "size");
 			this->locationViewport = glGetUniformLocation(this->programIterate, "viewport");
+
+			this->locationIterationsPerFrame = glGetUniformLocation(this->programIterate, "iterationsPerFrame");
 
 
 			fragmentShaderCode = CODE(
@@ -850,28 +883,27 @@ namespace fractals
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
 
-			for (std::int32_t i = 0; i < iterations; i++)
-			{
-				glViewport(0, 0, this->size.x, this->size.y);
+			glViewport(0, 0, this->size.x, this->size.y);
 
-				glUseProgram(this->programIterate);
+			glUseProgram(this->programIterate);
 
-				glUniform1d(this->locationBound, 2.0);
-				glUniform1ui(this->locationCurrentIteration, this->currentIteration);
+			glUniform1d(this->locationBound, 2.0);
+			glUniform1ui(this->locationCurrentIteration, this->currentIteration);
 
-				glUniform2iv(this->locationSize, 1, reinterpret_cast<const GLint*>(&this->size));
-				glUniform4dv(this->locationViewport, 1, reinterpret_cast<const GLdouble*>(&this->viewport));
+			glUniform2iv(this->locationSize, 1, reinterpret_cast<const GLint*>(&this->size));
+			glUniform4dv(this->locationViewport, 1, reinterpret_cast<const GLdouble*>(&this->viewport));
 
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, this->textureIterations);
+			glUniform1i(this->locationIterationsPerFrame, iterations);
 
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, this->textureValues);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, this->textureIterations);
 
-				glDrawArrays(GL_TRIANGLES, 0, 6);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, this->textureValues);
 
-				this->currentIteration += 25;
-			}
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			this->currentIteration += iterations;
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -892,9 +924,31 @@ namespace fractals
 
 			if (resolution != this->resolution || viewport.viewport != this->viewport.viewport)
 			{
-				this->update(resolution, viewport);
+				this->update(resolution, viewport, this->oversampling);
 
 				glViewport(0, 0, resolution.x, resolution.y);
+			}
+		}
+
+		virtual Viewport getPreferredViewport() const override
+		{
+			return Viewport(-2.0f, 1.0f, -1.0f, 1.0f);
+		}
+
+		virtual std::int32_t getPreferredIterationsPerFrame() const override
+		{
+			return 10;
+		}
+
+		virtual void options()
+		{
+			std::int32_t oversampling = this->oversampling;
+
+			ImGui::SliderInt("Oversampling", &oversampling, 1, 16);
+
+			if (this->oversampling != oversampling)
+			{
+				this->update(this->resolution, this->viewport, oversampling);
 			}
 		}
 	};
