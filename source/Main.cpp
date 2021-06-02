@@ -235,16 +235,16 @@ int main()
 	glBindVertexArray(vertexArray);
 
 	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
+	RAIIWrapper<ImGuiContext*> imGuiContext(ImGui::CreateContext(), ImGui::DestroyContext);
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
 	ImGui::StyleColorsDark();
-	
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 420");
+
+	RAIIWrapper<bool> imGuiGlfwIsInit(ImGui_ImplGlfw_InitForOpenGL(window, true), [](const bool) { ImGui_ImplGlfw_Shutdown(); });
+	RAIIWrapper<bool> imGuiOpenGLIsInit(ImGui_ImplOpenGL3_Init("#version 420"), [](const bool) { ImGui_ImplOpenGL3_Shutdown(); });
 
 	try
 	{

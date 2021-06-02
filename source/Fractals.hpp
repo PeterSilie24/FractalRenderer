@@ -192,8 +192,8 @@ namespace fractals
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			auto vertexShaderCode = CODE(
-				#version 420 core \n
+			auto vertexShaderCode = CODE(\
+				#version 420 core \n\
 
 				vec2 vertices[4] = vec2[](vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0));
 				int indices[6] = int[](0, 1, 2, 1, 2, 3);
@@ -206,9 +206,9 @@ namespace fractals
 
 			gl::requireExtension("GL_ARB_shader_image_load_store");
 
-			auto fragmentShaderCode = CODE(
-				#version 420 core \n
-				#extension GL_ARB_shader_image_load_store : enable \n
+			auto fragmentShaderCode = CODE(\
+				#version 420 core \n\
+				#extension GL_ARB_shader_image_load_store : enable \n\
 
 				precision highp float;
 
@@ -276,8 +276,8 @@ namespace fractals
 			this->locationCounter = glGetUniformLocation(this->programIterate, "counter");
 
 			
-			fragmentShaderCode = CODE(
-				#version 420 core \n
+			fragmentShaderCode = CODE(\
+				#version 420 core \n\
 
 				precision highp float;
 
@@ -656,8 +656,8 @@ namespace fractals
 		Mandelbrot(const glm::ivec2& resolution, const Viewport& viewport, const std::int32_t oversampling = 2, const std::int32_t iterationsPerFrame = 25) :
 			resolution(resolution), viewport(viewport), oversampling(oversampling)
 		{
-			auto vertexShaderCode = CODE(
-				#version 420 core \n
+			auto vertexShaderCode = CODE(\
+				#version 420 core \n\
 
 				vec2 vertices[4] = vec2[](vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0));
 				int indices[6] = int[](0, 1, 2, 1, 2, 3);
@@ -670,9 +670,9 @@ namespace fractals
 
 			gl::requireExtension("GL_ARB_gpu_shader_fp64");
 
-			auto fragmentShaderCode = CODE(
-				#version 420 core \n
-				#extension GL_ARB_gpu_shader_fp64 : enable \n
+			auto fragmentShaderCode = CODE(\
+				#version 420 core \n\
+				#extension GL_ARB_gpu_shader_fp64 : enable \n\
 
 				precision highp float;
 
@@ -691,9 +691,9 @@ namespace fractals
 			this->programClear = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
 
 
-			fragmentShaderCode = CODE(
-				#version 420 core \n
-				#extension GL_ARB_gpu_shader_fp64 : enable \n
+			fragmentShaderCode = CODE(\
+				#version 420 core \n\
+				#extension GL_ARB_gpu_shader_fp64 : enable \n\
 
 				precision highp float;
 
@@ -768,8 +768,8 @@ namespace fractals
 			this->locationIterationsPerFrame = glGetUniformLocation(this->programIterate, "iterationsPerFrame");
 
 
-			fragmentShaderCode = CODE(
-				#version 420 core \n
+			fragmentShaderCode = CODE(\
+				#version 420 core \n\
 
 				precision highp float;
 
@@ -791,9 +791,9 @@ namespace fractals
 
 			this->locationResolution = glGetUniformLocation(this->programRender, "resolution");
 
-			fragmentShaderCode = CODE(
-				#version 420 core \n
-				#extension GL_ARB_gpu_shader_fp64 : enable \n
+			fragmentShaderCode = CODE(\
+				#version 420 core \n\
+				#extension GL_ARB_gpu_shader_fp64 : enable \n\
 
 				precision highp float;
 				
