@@ -1,7 +1,7 @@
 #include "OpenGLHelper.hpp"
 #include "Fractals.hpp"
 
-void glfwErrorCallback(int error, const char* description)
+void APIENTRY glfwErrorCallback(int error, const char* description)
 {
 	std::cout << "GLFW-Error: " << description << std::endl;
 }
@@ -18,6 +18,9 @@ bool iterate = true;
 int width = 1, height = 1;
 bool moving = false;
 glm::dvec2 pos(0.0);
+
+bool windowFocused = false;
+bool anyWindowFocused = false;
 
 std::int32_t iterationsPerFrame = 1;
 
@@ -63,30 +66,12 @@ const FractalSelector* selectedFractalSelector = nullptr;
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-	if (ImGui::IsWindowFocused())
+	if (!anyWindowFocused/* || windowFocused*/)
 	{
 		if (action == GLFW_PRESS)
 		{
 			switch (key)
 			{
-			case GLFW_KEY_F:
-			{
-				setFractal<fractals::BarnsleyFern>(glm::ivec2(1080 * 8, 1920 * 8));
-
-				break;
-			}
-			case GLFW_KEY_T:
-			{
-				setFractal<fractals::SierpinskiTriangle>(glm::ivec2(1920 * 8, 1080 * 8));
-
-				break;
-			}
-			case GLFW_KEY_M:
-			{
-				setFractal<fractals::Mandelbrot>(glm::ivec2(1920, 1080), viewport, 2);
-
-				break;
-			}
 			case GLFW_KEY_SPACE:
 			{
 				if (fractal)
@@ -118,7 +103,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
-	if (ImGui::IsWindowFocused())
+	if (!anyWindowFocused)
 	{
 		if (button == GLFW_MOUSE_BUTTON_LEFT)
 		{
@@ -140,7 +125,7 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
 	glm::dvec2 newPos(xpos, ypos);
 
-	if (ImGui::IsWindowFocused())
+	if (!anyWindowFocused)
 	{
 		if (moving)
 		{
@@ -158,7 +143,7 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
-	if (ImGui::IsWindowFocused())
+	if (!anyWindowFocused)
 	{
 		double x = (viewport.left + viewport.right) / 2.0;
 		double y = (viewport.bottom + viewport.top) / 2.0;
@@ -267,6 +252,9 @@ int main()
 
 			ImGui::Begin("Fractal Renderer", nullptr, ImGuiWindowFlags_MenuBar);
 
+			windowFocused = ImGui::IsWindowFocused();
+			anyWindowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow);
+
 			if (ImGui::BeginMenuBar())
 			{
 				if (ImGui::BeginMenu("Menu"))
@@ -286,6 +274,31 @@ int main()
 						ImGui::EndMenu();
 					}
 
+					ImGui::Separator();
+
+					if (ImGui::MenuItem("Iteration Step", "SPACE", nullptr, !iterate))
+					{
+						if (fractal)
+						{
+							fractal->iterate();
+						}
+					}
+
+					if (ImGui::MenuItem("Auto Iterate", "ENTER", &iterate))
+					{
+
+					}
+
+					ImGui::Separator();
+
+					if (ImGui::MenuItem("Reset", "BACKSPACE"))
+					{
+						if (fractal)
+						{
+							fractal->reset();
+						}
+					}
+
 					ImGui::EndMenu();
 				}
 				if (ImGui::BeginMenu("About"))
@@ -300,28 +313,6 @@ int main()
 
 			if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				ImGui::Checkbox("Auto Iterate", &iterate);
-
-				ImGui::SameLine();
-
-				if (ImGui::Button("Single Iteration"))
-				{
-					if (fractal)
-					{
-						fractal->iterate();
-					}
-				}
-
-				ImGui::SameLine();
-
-				if (ImGui::Button("Reset"))
-				{
-					if (fractal)
-					{
-						fractal->reset();
-					}
-				}
-
 				ImGui::SliderInt("Iterations per Frame", &iterationsPerFrame, 1, 1000);
 
 				if (fractal)
@@ -342,7 +333,7 @@ int main()
 
 				ImGui::Text(stream.str().c_str());
 
-				if (ImGui::Button("Reset##Viewport"))
+				if (fractal && ImGui::Button("Reset##Viewport"))
 				{
 					viewport = fractal->getPreferredViewport();
 				}
@@ -355,7 +346,7 @@ int main()
 
 			ImGui::End();
 
-			//ImGui::ShowDemoWindow(nullptr);
+			ImGui::ShowDemoWindow(nullptr);
 
 			ImGui::EndFrame();
 

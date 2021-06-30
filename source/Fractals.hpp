@@ -62,14 +62,108 @@ namespace fractals
 
 	class Affine : public Fractal
 	{
+	public:
+		struct InitialSet
+		{
+			enum class Type : int
+			{
+				Points = 0,
+				Distribution = 1,
+				Both = 2,
+				Invalid,
+			};
+
+			InitialSet(const std::vector<glm::vec2>& points = { }, const std::string& distribution = "sin(pi * x) * sin(pi * y) / 4") :
+				points(points), distribution(distribution)
+			{
+				this->type = this->getType();
+			}
+
+			Type getType() const
+			{
+				if (this->points.size() > 0 && this->distribution == "")
+				{
+					return Type::Points;
+				}
+				else if (this->points.size() == 0 && this->distribution != "")
+				{
+					return Type::Distribution;
+				}
+				else if (this->points.size() > 0 && this->distribution != "")
+				{
+					return Type::Both;
+				}
+				else
+				{
+					return Type::Invalid;
+				}
+			}
+
+			Type type;
+			std::vector<glm::vec2> points;
+			std::string distribution;
+		};
+
+		struct Fractal
+		{
+			Fractal(const Viewport& viewport = Viewport(), const std::vector<AffineTransform>& affineTransforms = { }) :
+				viewport(viewport), affineTransforms(affineTransforms)
+			{
+
+			}
+
+			Viewport viewport;
+			std::vector<AffineTransform> affineTransforms;
+		};
+
+		inline static Fractal createBarnsleyFern()
+		{
+			std::vector<AffineTransform> affineTransforms = {
+				{ glm::mat2x2(glm::vec2(+0.00f, +0.00f), glm::vec2(+0.00f, +0.16f)), glm::vec2(+0.00f, +0.00f) },
+				{ glm::mat2x2(glm::vec2(+0.85f, -0.04f), glm::vec2(+0.04f, +0.85f)), glm::vec2(+0.00f, +1.60f) },
+				{ glm::mat2x2(glm::vec2(+0.20f, +0.23f), glm::vec2(-0.26f, +0.22f)), glm::vec2(+0.00f, +1.60f) },
+				{ glm::mat2x2(glm::vec2(-0.15f, +0.26f), glm::vec2(+0.28f, +0.24f)), glm::vec2(+0.00f, +0.44f) }
+			};
+
+			Viewport viewport(-2.2, 2.7, 0.0, 10.0);
+
+			return Fractal(viewport, affineTransforms);
+		}
+
+		inline static Fractal createSierpinskiTriangle()
+		{
+			std::vector<AffineTransform> affineTransforms = {
+				{ glm::mat2x2(0.5f), glm::vec2(0.0f) },
+				{ glm::mat2x2(0.5f), glm::vec2(0.5f, 0.0f) },
+				{ glm::mat2x2(0.5f), glm::vec2(0.0f, 0.5f) }
+			};
+
+			Viewport viewport(0.0, 1.0, 0.0, 1.0);
+
+			return Fractal(viewport, affineTransforms);
+		}
+
 	private:
+		std::vector<AffineTransform> affineTransforms;
+
+		InitialSet initialSet;
+
 		std::vector<std::uint32_t> pixels;
 		RAIIWrapper<GLuint> textureSet;
 
-		RAIIWrapper<GLuint> framebufferIterate;
-		RAIIWrapper<GLuint> programIterate;
+		std::string vertexShaderCode;
+
 		GLuint counter;
-		GLint locationCounter;
+		RAIIWrapper<GLuint> framebufferIterate;
+		RAIIWrapper<GLuint> programInit;
+		RAIIWrapper<GLuint> programIterate;
+		GLint locationIterateCounter;
+		RAIIWrapper<GLuint> programColor;
+		GLint locationColorCounter;
+		glm::vec3 colorPrimary;
+		glm::vec3 colorSecondary;
+		GLint locationColorPrimary;
+		GLint locationColorSecondary;
 
 		RAIIWrapper<GLuint> textureColor;
 		RAIIWrapper<GLuint> programRender;
@@ -123,76 +217,17 @@ namespace fractals
 		}
 
 	public:
-		Affine(const glm::ivec2& size, const Viewport& viewport = {}, const std::vector<AffineTransform>& affineTransforms = {}, const std::vector<glm::vec2>& initialPoints = { glm::vec2(0.0f) }, std::function<bool(float, float)> indicator = nullptr) :
-			counter(0), size(size), viewport(viewport)
+		Affine(const glm::ivec2& size, const Fractal& fractal, const InitialSet& initialSet = InitialSet()) :
+			initialSet(initialSet), viewport(fractal.viewport), affineTransforms(fractal.affineTransforms),
+			colorPrimary(glm::vec3(0.0, 1.0, 0.0)), colorSecondary(glm::vec3(1.0, 0.0, 0.0)), counter(1), size(size)
 		{
-			this->textureSet = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
-
-			glBindTexture(GL_TEXTURE_2D, this->textureSet);
-
-			this->pixels = std::vector<std::uint32_t>(std::size_t(size.x) * std::size_t(size.y), std::numeric_limits<std::uint32_t>::max());
-
-			if (indicator)
+			if (this->initialSet.points.size() == 0)
 			{
-				for (std::int32_t iy = 0; iy < size.y; iy++)
-				{
-					for (std::int32_t ix = 0; ix < size.x; ix++)
-					{
-						float x = viewport.left + (float(ix) + 0.5f) / float(size.x) * (viewport.right - viewport.left);
-						float y = viewport.bottom + (float(iy) + 0.5f) / float(size.y) * (viewport.top - viewport.bottom);
-
-						if (indicator(x, y))
-						{
-							pixels[ix + size.x * iy] = this->counter;
-						}
-					}
-				}
+				this->initialSet.points.push_back(glm::vec2(0.0f));
 			}
 
-			for (const auto& point : initialPoints)
-			{
-				glm::ivec2 pixel = this->findBestPixel(glm::ivec2(0), size - 1, size, viewport, point);
 
-				pixels[pixel.x + size.x * pixel.y] = this->counter;
-			}
-
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, size.x, size.y, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, this->pixels.data());
-
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-
-			this->framebufferIterate = RAIIWrapper<GLuint>(glCreate(Framebuffer)(), glDelete(Framebuffer));
-
-			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
-
-			this->textureColor = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
-
-			glBindTexture(GL_TEXTURE_2D, this->textureColor);
-
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-
-			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-
-			glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, this->textureColor, 0);
-
-			GLenum drawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
-
-			glDrawBuffers(1, drawBuffers);
-
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			{
-				throw std::runtime_error("GL-Error: Framebuffer not completed.");
-			}
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			auto vertexShaderCode = CODE(\
+			this->vertexShaderCode = CODE(\
 				#version 420 core \n\
 
 				vec2 vertices[4] = vec2[](vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0));
@@ -212,68 +247,40 @@ namespace fractals
 
 				precision highp float;
 
-				layout(binding = 0) uniform usampler2D sampler;
-				layout(r32ui, binding = 0) uniform uimage2D img;
+				layout(r32ui, binding = 0) uniform uimage2D image;
 
 				uniform uint counter;
+				
+				uniform vec3 colorPrimary;
+				uniform vec3 colorSecondary;
 
 				out vec4 color;
-			);
-
-			fragmentShaderCode += "ivec2 size = ivec2(" + std::to_string(size.x) + ", " + std::to_string(size.y) + ");";
-			fragmentShaderCode += "vec4 viewport = vec4(" + std::to_string(viewport.left) + ", " + std::to_string(viewport.right) + ", " + std::to_string(viewport.bottom) + ", " + std::to_string(viewport.top) + ");";
-
-			fragmentShaderCode += CODE(
-				vec2 fromScreen(const vec2 screen)
-				{
-					return viewport.xz + screen * (viewport.yw - viewport.xz);
-				}
-
-				vec2 toScreen(const vec2 pos)
-				{
-					return (pos - viewport.xz) / (viewport.yw - viewport.xz);
-				}
 
 				void main()
 				{
-					vec2 screen = gl_FragCoord.xy / size;
+					uint value = imageLoad(image, ivec2(gl_FragCoord.xy)).r & 0x7FFFFFFFu;
 
-					uint value = texture(sampler, screen).r;
-
-					if (value == counter - 1u)
+					if (value == counter)
 					{
-						vec2 pos = fromScreen(screen);
-						vec2 newPos;
-
-						mat2x2 matrix;
-						vec2 offset;
-			);
-
-			for (const auto& affineTransform : affineTransforms)
-			{
-				fragmentShaderCode += "matrix[0] = vec2(" + std::to_string(affineTransform.matrix[0].x) + ", " + std::to_string(affineTransform.matrix[0].y) + ");";
-				fragmentShaderCode += "matrix[1] = vec2(" + std::to_string(affineTransform.matrix[1].x) + ", " + std::to_string(affineTransform.matrix[1].y) + ");";
-				fragmentShaderCode += "offset = vec2(" + std::to_string(affineTransform.offset.x) + ", " + std::to_string(affineTransform.offset.y) + ");";
-
-				fragmentShaderCode += CODE(
-						newPos = matrix * pos + offset;
-
-						imageAtomicMin(img, ivec2(toScreen(newPos) * size), counter);
-				);
-			}
-
-			fragmentShaderCode += CODE(
+						color = vec4(colorPrimary, 1.0);
 					}
-
-					memoryBarrier();
-
-					color = vec4(0, 5 * exp(-float(texture(sampler, screen).r) / 10.0), 0, 1.0);
+					else if (value > 0)
+					{
+						color = vec4(float(value + 1u) / float(counter + 1u) * colorSecondary, 1.0);
+					}
+					else
+					{
+						color = vec4(0.0, 0.0, 0.0, 0.0);
+					}
 				}
 			);
 
-			this->programIterate = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
+			this->programColor = gl::compileAndLinkShaders(this->vertexShaderCode, fragmentShaderCode);
 
-			this->locationCounter = glGetUniformLocation(this->programIterate, "counter");
+			this->locationColorCounter = glGetUniformLocation(this->programColor, "counter");
+
+			this->locationColorPrimary = glGetUniformLocation(this->programColor, "colorPrimary");
+			this->locationColorSecondary = glGetUniformLocation(this->programColor, "colorSecondary");
 
 			
 			fragmentShaderCode = CODE(\
@@ -311,35 +318,252 @@ namespace fractals
 				}
 			);
 
-			this->programRender = gl::compileAndLinkShaders(vertexShaderCode, fragmentShaderCode);
+			this->programRender = gl::compileAndLinkShaders(this->vertexShaderCode, fragmentShaderCode);
 
 			this->locationSize = glGetUniformLocation(this->programRender, "size");
 			this->locationResolution = glGetUniformLocation(this->programRender, "resolution");
 
 			this->locationViewport = glGetUniformLocation(this->programRender, "viewport");
 			this->locationViewportRequested = glGetUniformLocation(this->programRender, "viewportRequested");
+
+
+			this->setup();
 		}
 
-		virtual void reset() override
+	private:
+		void setup()
 		{
+			this->textureSet = nullptr;
+			this->framebufferIterate = nullptr;
+			this->textureColor = nullptr;
+
+
+			this->textureSet = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
+
 			glBindTexture(GL_TEXTURE_2D, this->textureSet);
 
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, size.x, size.y, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, this->pixels.data());
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_R32UI, size.x, size.y, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
 
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+
+			this->framebufferIterate = RAIIWrapper<GLuint>(glCreate(Framebuffer)(), glDelete(Framebuffer));
+
 			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
 
-			glClear(GL_COLOR_BUFFER_BIT);
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			this->textureColor = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
 
 			glBindTexture(GL_TEXTURE_2D, this->textureColor);
 
-			glGenerateMipmap(GL_TEXTURE_2D);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
-			this->counter = 0;
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+			glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, this->textureColor, 0);
+
+			GLenum drawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
+
+			glDrawBuffers(1, drawBuffers);
+
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			{
+				throw std::runtime_error("GL-Error: Framebuffer not completed.");
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+			auto fragmentShaderCode = CODE(\
+				#version 420 core \n\
+				#extension GL_ARB_shader_image_load_store : enable \n\
+
+				precision highp float;
+				
+				layout(r32ui, binding = 0) uniform uimage2D image;
+
+				uniform uint counter;
+
+				out vec4 color;
+			);
+
+			fragmentShaderCode += "ivec2 size = ivec2(" + std::to_string(size.x) + ", " + std::to_string(size.y) + ");";
+			fragmentShaderCode += "vec4 viewport = vec4(" + std::to_string(viewport.left) + ", " + std::to_string(viewport.right) + ", " + std::to_string(viewport.bottom) + ", " + std::to_string(viewport.top) + ");";
+
+			fragmentShaderCode += CODE(
+				vec2 fromScreen(const vec2 screen)
+				{
+					return viewport.xz + screen * (viewport.yw - viewport.xz);
+				}
+
+				vec2 toScreen(const vec2 pos)
+				{
+					return (pos - viewport.xz) / (viewport.yw - viewport.xz);
+				}
+
+				void main()
+				{
+					ivec2 index = ivec2(gl_FragCoord.xy);
+					vec2 screen = gl_FragCoord.xy / size;
+
+					uint value = imageLoad(image, index).r;
+
+					bool flag = (value & 0x80000000) != 0;
+					value &= 0x7FFFFFFFu;
+
+					if (value == counter - 1u || (value == counter && flag))
+					{
+						vec2 pos = fromScreen(screen);
+						vec2 newPos;
+						uint newValue;
+
+						mat2x2 matrix;
+						vec2 offset;
+			);
+
+			for (const auto& affineTransform : this->affineTransforms)
+			{
+				fragmentShaderCode += "matrix[0] = vec2(" + std::to_string(affineTransform.matrix[0].x) + ", " + std::to_string(affineTransform.matrix[0].y) + ");";
+				fragmentShaderCode += "matrix[1] = vec2(" + std::to_string(affineTransform.matrix[1].x) + ", " + std::to_string(affineTransform.matrix[1].y) + ");";
+				fragmentShaderCode += "offset = vec2(" + std::to_string(affineTransform.offset.x) + ", " + std::to_string(affineTransform.offset.y) + ");";
+
+				fragmentShaderCode += CODE(
+						newPos = matrix * pos + offset;
+
+						index = ivec2(toScreen(newPos) * size);
+
+						value = imageLoad(image, index).r;
+
+						newValue = counter;
+
+						if ((value & 0x7FFFFFFFu) == counter - 1u)
+						{
+							newValue |= 0x80000000;
+						}
+						else if ((value & 0x7FFFFFFFu) == counter)
+						{
+							newValue = value;
+						}
+
+						imageAtomicExchange(image, index, newValue);
+				);
+			}
+
+			fragmentShaderCode += CODE(
+					}
+
+					memoryBarrier();
+				}
+			);
+
+			this->programIterate = gl::compileAndLinkShaders(this->vertexShaderCode, fragmentShaderCode);
+
+			this->locationIterateCounter = glGetUniformLocation(this->programIterate, "counter");
+
+
+			this->compileInitialSetProgram();
+
+			this->reset();
+		}
+
+		void compileInitialSetProgram()
+		{
+			std::vector<glm::ivec2> pixels;
+
+			for (const auto& point : this->initialSet.points)
+			{
+				pixels.push_back(this->findBestPixel(glm::ivec2(0), this->size - 1, this->size, this->viewport, point));
+			}
+
+			auto fragmentShaderCode = CODE(\
+				#version 420 core \n\
+				#extension GL_ARB_shader_image_load_store : enable \n\
+
+				precision highp float;
+
+				layout(r32ui, binding = 0) uniform uimage2D image;
+
+				out vec4 color;
+			);
+
+			fragmentShaderCode += "ivec2 size = ivec2(" + std::to_string(size.x) + ", " + std::to_string(size.y) + ");";
+
+			fragmentShaderCode += CODE(
+				float rand(vec2 seed)
+				{
+					return fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453);
+				}
+				
+				float noise(vec2 xy, float seed)
+				{
+					float golden_ratio = 1.61803398874989484820459;
+
+					return fract(tan(distance(xy * golden_ratio, xy) * seed) * xy.x);
+				}
+
+				void main()
+				{
+					float random = noise(gl_FragCoord.xy, 1.0);
+
+					ivec2 pixel = ivec2(gl_FragCoord.xy);
+					vec2 position = gl_FragCoord.xy / vec2(size);
+					
+					float x = position.x;
+					float y = position.y;
+					float pi = 3.1415926535897932384626433832795f;
+
+					float factor = 0.0f;
+			);
+
+			if (this->initialSet.distribution != "" && (this->initialSet.type == InitialSet::Type::Distribution || this->initialSet.type == InitialSet::Type::Both))
+			{
+				fragmentShaderCode += "factor = " + this->initialSet.distribution + ";";
+			}
+
+			fragmentShaderCode += CODE(
+					imageStore(image, pixel, uvec4(factor > 0.0 ? uint(random <= factor) : 0u, 0u, 0u, 0u));
+				);
+
+			if (this->initialSet.type == InitialSet::Type::Points || this->initialSet.type == InitialSet::Type::Both)
+			{
+				for (const auto& pixel : pixels)
+				{
+					fragmentShaderCode += "if (pixel.x == " + std::to_string(pixel.x) + " && pixel.y == " + std::to_string(pixel.y) + ")";
+					fragmentShaderCode += "{";
+					fragmentShaderCode += "   imageStore(image, pixel, uvec4(1u, 0u, 0u, 0u)); ";
+					fragmentShaderCode += "}";
+				}
+			}
+
+			fragmentShaderCode += CODE(
+					memoryBarrier();
+
+					color = vec4(0.0);
+				}
+			);
+
+			this->programInit = gl::compileAndLinkShaders(this->vertexShaderCode, fragmentShaderCode);
+		}
+
+	public:
+		virtual void reset() override
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
+
+			glViewport(0, 0, this->size.x, this->size.y);
+
+			glUseProgram(this->programInit);
+
+			glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			this->counter = 1;
 		}
 
 		virtual void iterate(const std::int32_t iterations) override
@@ -352,24 +576,42 @@ namespace fractals
 
 				glUseProgram(this->programIterate);
 
-				glUniform1ui(this->locationCounter, ++this->counter);
+				glUniform1ui(this->locationIterateCounter, ++this->counter);
 
-				glBindTexture(GL_TEXTURE_2D, this->textureSet);
-
-				glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+				glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
 
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			glBindTexture(GL_TEXTURE_2D, this->textureColor);
-
-			glGenerateMipmap(GL_TEXTURE_2D);
 		}
 
 		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) override
 		{
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
+
+			glViewport(0, 0, this->size.x, this->size.y);
+
+			glUseProgram(this->programColor);
+
+			glUniform1ui(this->locationColorCounter, this->counter);
+
+			glUniform3fv(this->locationColorPrimary, 1, reinterpret_cast<const GLfloat*>(&this->colorPrimary));
+			glUniform3fv(this->locationColorSecondary, 1, reinterpret_cast<const GLfloat*>(&this->colorSecondary));
+
+			glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			glBindTexture(GL_TEXTURE_2D, this->textureColor);
+			
+			glGenerateMipmap(GL_TEXTURE_2D);
+
+
+			glViewport(0, 0, resolution.x, resolution.y);
+
 			glUseProgram(this->programRender);
 
 			glUniform2iv(this->locationSize, 1, reinterpret_cast<const GLint*>(&this->size));
@@ -385,60 +627,150 @@ namespace fractals
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
+
+		virtual Viewport getPreferredViewport() const override
+		{
+			return this->viewport;
+		}
+		
+		virtual void options() override
+		{
+			if (ImGui::InputInt2("Size", reinterpret_cast<int*>(&this->size)))
+			{
+				this->setup();
+			}
+
+			fractals::Fractal::options();
+
+			if (ImGui::TreeNode("Affine Contractions Mappings"))
+			{
+				const char* fractals[] = { "Barnsley Fern", "Sierpinski Triangle" };
+
+				if (ImGui::BeginMenu("Load Configration"))
+				{
+					Fractal fractal;
+
+					if (ImGui::MenuItem("Barnsley Fern"))
+					{
+						fractal = this->createBarnsleyFern();
+					}
+					if (ImGui::MenuItem("Sierpinski Triangle"))
+					{
+						fractal = this->createSierpinskiTriangle();
+					}
+
+					if (fractal.affineTransforms.size() > 0)
+					{
+						this->viewport = fractal.viewport;
+						this->affineTransforms = fractal.affineTransforms;
+
+						this->setup();
+					}
+
+					ImGui::EndMenu();
+				}
+
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Colors"))
+			{
+				ImGui::ColorEdit3("Primary Color", reinterpret_cast<float*>(&this->colorPrimary));
+				ImGui::ColorEdit3("Secondary Color", reinterpret_cast<float*>(&this->colorSecondary));
+
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Initial Set"))
+			{
+				const char* initialSetTypes[] = { "Points", "Distribution", "Both" };
+
+				if (ImGui::Combo("Type", reinterpret_cast<int*>(&this->initialSet.type), initialSetTypes, sizeof(initialSetTypes) / sizeof(initialSetTypes[0])))
+				{
+					this->compileInitialSetProgram();
+
+					this->reset();
+				}
+
+				if (this->initialSet.type == InitialSet::Type::Points || this->initialSet.type == InitialSet::Type::Both)
+				{
+					ImGui::SliderFloat2("Point", reinterpret_cast<float*>(this->initialSet.points.data()), glm::min(this->viewport.left, this->viewport.bottom), glm::max(this->viewport.right, this->viewport.top));
+				}
+				if (this->initialSet.type == InitialSet::Type::Distribution || this->initialSet.type == InitialSet::Type::Both)
+				{
+					std::vector<char> buffer(glm::max(this->initialSet.distribution.size() + 1llu, 1024llu), '\0');
+
+					std::copy(this->initialSet.distribution.begin(), this->initialSet.distribution.end(), buffer.begin());
+
+					if (ImGui::InputText("Distribution", buffer.data(), buffer.size()))
+					{
+						this->initialSet.distribution = buffer.data();
+
+						try
+						{
+							this->compileInitialSetProgram();
+
+							try
+							{
+								this->reset();
+							}
+							catch (const std::exception&)
+							{
+								throw;
+							}
+						}
+						catch (const std::exception&)
+						{
+
+						}
+					}
+
+					if (ImGui::BeginMenu("Load Distribution"))
+					{
+						static std::vector<std::pair<std::string, std::string>> distributions = {
+							{ "Sinus", "sin(pi * x) * sin(pi * y) / 4" },
+							{ "Checkerboard", "sin(10 * pi * x) * sin(10 * pi * y) / 4" },
+							{ "Rectangle", "(0.25 < x && x < 0.75 && 0.25 < y && y < 0.75) ? 1 : 0" },
+						};
+
+						for (const auto& distribution : distributions)
+						{
+							if (ImGui::MenuItem(distribution.first.c_str()))
+							{
+								this->initialSet.distribution = distribution.second;
+
+								this->compileInitialSetProgram();
+
+								this->reset();
+							}
+						}
+
+						ImGui::EndMenu();
+					}
+				}
+
+				ImGui::TreePop();
+			}
+		}
 	};
 
 	class BarnsleyFern : public Affine
 	{
-	private:
-		inline static std::vector<AffineTransform> createAffineTransforms()
-		{
-			return std::vector<fractals::AffineTransform>(
-				{
-					{ glm::mat2x2(glm::vec2(+0.00f, +0.00f), glm::vec2(+0.00f, +0.16f)), glm::vec2(+0.00f, +0.00f) },
-					{ glm::mat2x2(glm::vec2(+0.85f, -0.04f), glm::vec2(+0.04f, +0.85f)), glm::vec2(+0.00f, +1.60f) },
-					{ glm::mat2x2(glm::vec2(+0.20f, +0.23f), glm::vec2(-0.26f, +0.22f)), glm::vec2(+0.00f, +1.60f) },
-					{ glm::mat2x2(glm::vec2(-0.15f, +0.26f), glm::vec2(+0.28f, +0.24f)), glm::vec2(+0.00f, +0.44f) }
-				}
-			);
-		}
-
 	public:
 		BarnsleyFern(const glm::ivec2& size) :
-			Affine(size, Viewport(-2.2f, 2.7f, 0.0f, 10.0f), this->createAffineTransforms())
+			Affine(size, Affine::createBarnsleyFern())
 		{
 
-		}
-
-		virtual Viewport getPreferredViewport() const override
-		{
-			return Viewport(-2.2f, 2.7f, 0.0f, 10.0f);
 		}
 	};
 
 	class SierpinskiTriangle : public Affine
 	{
-	private:
-		inline static std::vector<AffineTransform> createAffineTransforms()
-		{
-			return std::vector<fractals::AffineTransform>(
-				{
-					{ glm::mat2x2(0.5f), glm::vec2(0.0f) },
-					{ glm::mat2x2(0.5f), glm::vec2(0.5f, 0.0f) },
-					{ glm::mat2x2(0.5f), glm::vec2(0.0f, 0.5f) }
-				}
-			);
-		}
-
 	public:
 		SierpinskiTriangle(const glm::ivec2& size) :
-			Affine(size, Viewport(0.0f, 1.0f, 0.0f, 1.0f), this->createAffineTransforms())
+			Affine(size, Affine::createSierpinskiTriangle())
 		{
 
-		}
-
-		virtual Viewport getPreferredViewport() const override
-		{
-			return Viewport(0.0f, 1.0f, 0.0f, 1.0f);
 		}
 	};
 
@@ -940,8 +1272,10 @@ namespace fractals
 			return 10;
 		}
 
-		virtual void options()
+		virtual void options() override
 		{
+			Fractal::options();
+
 			std::int32_t oversampling = this->oversampling;
 
 			ImGui::SliderInt("Oversampling", &oversampling, 1, 16);
