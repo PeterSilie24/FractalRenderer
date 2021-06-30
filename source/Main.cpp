@@ -56,8 +56,8 @@ struct FractalSelector
 
 std::vector<FractalSelector> fractalSelectors(
 	{
-		FractalSelector::create<fractals::BarnsleyFern>("Barnsley Fern", glm::ivec2(1080 * 6, 1920 * 6)),
-		FractalSelector::create<fractals::SierpinskiTriangle>("Sierpinski Triangle", glm::ivec2(1080 * 6, 1920 * 6)),
+		FractalSelector::create<fractals::BarnsleyFern>("Barnsley Fern", glm::ivec2(4096, 4096)),
+		FractalSelector::create<fractals::SierpinskiTriangle>("Sierpinski Triangle", glm::ivec2(4096, 4096)),
 		FractalSelector::create<fractals::Mandelbrot>("Mandelbrot", glm::ivec2(1920, 1080), viewport, 2),
 	}
 );
@@ -346,7 +346,7 @@ int main()
 
 			ImGui::End();
 
-			ImGui::ShowDemoWindow(nullptr);
+			//ImGui::ShowDemoWindow(nullptr);
 
 			ImGui::EndFrame();
 
