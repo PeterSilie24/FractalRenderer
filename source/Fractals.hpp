@@ -119,13 +119,13 @@ namespace fractals
 		inline static Fractal createBarnsleyFern()
 		{
 			std::vector<AffineTransform> affineTransforms = {
-				{ glm::mat2x2(glm::vec2(+0.00f, +0.00f), glm::vec2(+0.00f, +0.16f)), glm::vec2(+0.00f, +0.00f) },
-				{ glm::mat2x2(glm::vec2(+0.85f, -0.04f), glm::vec2(+0.04f, +0.85f)), glm::vec2(+0.00f, +1.60f) },
-				{ glm::mat2x2(glm::vec2(+0.20f, +0.23f), glm::vec2(-0.26f, +0.22f)), glm::vec2(+0.00f, +1.60f) },
-				{ glm::mat2x2(glm::vec2(-0.15f, +0.26f), glm::vec2(+0.28f, +0.24f)), glm::vec2(+0.00f, +0.44f) }
+				{ glm::mat2x2(glm::vec2(+0.00f, +0.00f), glm::vec2(+0.00f, +0.16f)), glm::vec2(+0.000f, +0.000f) },
+				{ glm::mat2x2(glm::vec2(+0.85f, -0.04f), glm::vec2(+0.04f, +0.85f)), glm::vec2(+0.000f, +0.160f) },
+				{ glm::mat2x2(glm::vec2(+0.20f, +0.23f), glm::vec2(-0.26f, +0.22f)), glm::vec2(+0.000f, +0.160f) },
+				{ glm::mat2x2(glm::vec2(-0.15f, +0.26f), glm::vec2(+0.28f, +0.24f)), glm::vec2(+0.000f, +0.044f) }
 			};
 
-			Viewport viewport(-2.2, 2.7, 0.0, 10.0);
+			Viewport viewport(-0.22, 0.27, 0.00, 1.00);
 
 			return Fractal(viewport, affineTransforms);
 		}
@@ -458,8 +458,6 @@ namespace fractals
 
 			fragmentShaderCode += CODE(
 					}
-
-					memoryBarrier();
 				}
 			);
 
@@ -543,8 +541,6 @@ namespace fractals
 			}
 
 			fragmentShaderCode += CODE(
-					memoryBarrier();
-
 					color = vec4(0.0);
 				}
 			);
@@ -567,6 +563,8 @@ namespace fractals
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
 			this->counter = 1;
 		}
 
@@ -585,13 +583,15 @@ namespace fractals
 				glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
 
 				glDrawArrays(GL_TRIANGLES, 0, 6);
+
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) override
 		{
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
 
 			glViewport(0, 0, this->size.x, this->size.y);
@@ -650,7 +650,9 @@ namespace fractals
 
 			if (ImGui::TreeNode("Affine Contractions Mappings"))
 			{
-				const char* fractals[] = { "Barnsley Fern", "Sierpinski Triangle" };
+				ImGui::BeginGroup();
+
+				bool changed = false;
 
 				if (ImGui::BeginMenu("Load Configration"))
 				{
@@ -670,11 +672,73 @@ namespace fractals
 						this->viewport = fractal.viewport;
 						this->affineTransforms = fractal.affineTransforms;
 
-						this->setup();
+						changed = true;
 					}
 
 					ImGui::EndMenu();
 				}
+
+				ImGui::Separator();
+
+				glm::vec4 viewport = this->viewport.viewport;
+
+				changed |= ImGui::InputFloat4("Viewport", reinterpret_cast<float*>(&viewport));
+
+				for (std::size_t i = 0; i < this->affineTransforms.size(); )
+				{
+					ImGui::Separator();
+
+					float values[6] = {
+						this->affineTransforms[i].matrix[0][0],
+						this->affineTransforms[i].matrix[0][1],
+						this->affineTransforms[i].offset[0],
+						this->affineTransforms[i].matrix[1][0],
+						this->affineTransforms[i].matrix[1][1],
+						this->affineTransforms[i].offset[1],
+					};
+
+					changed |= ImGui::SliderFloat3(("##" + std::to_string(2 * i + 0)).c_str(), values, -2.0f, 2.0f);
+
+					changed |= ImGui::SliderFloat3(("##" + std::to_string(2 * i + 1)).c_str(), values + 3, -2.0f, 2.0f);
+
+					ImGui::SameLine();
+
+					bool remove = ImGui::Button(("Remove##" + std::to_string(i)).c_str());
+
+					changed |= remove;
+
+					if (remove)
+					{
+						this->affineTransforms.erase(this->affineTransforms.begin() + i);
+					}
+					else
+					{
+						this->affineTransforms[i].matrix[0][0] = values[0];
+						this->affineTransforms[i].matrix[0][1] = values[1];
+						this->affineTransforms[i].offset[0] = values[2];
+						this->affineTransforms[i].matrix[1][0] = values[3];
+						this->affineTransforms[i].matrix[1][1] = values[4];
+						this->affineTransforms[i].offset[1] = values[5];
+
+						i++;
+					}
+				}
+
+				ImGui::Separator();
+
+				if (ImGui::Button("Add"))
+				{
+					this->affineTransforms.push_back(AffineTransform());
+				}
+
+				if (changed)
+				{
+					this->viewport.viewport = viewport;
+
+					this->setup();
+				}
+
+				ImGui::EndGroup();
 
 				ImGui::TreePop();
 			}

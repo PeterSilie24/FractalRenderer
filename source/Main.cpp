@@ -11,6 +11,8 @@ void APIENTRY glErrorCallback(GLenum source, GLenum type, GLuint id, GLenum seve
 	std::cout << "GL-Message: " << message << std::endl;
 }
 
+bool vsync = 1;
+
 std::shared_ptr<fractals::Fractal> fractal;
 
 bool iterate = true;
@@ -182,6 +184,8 @@ int main()
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
+	glfwWindowHint(GLFW_MAXIMIZED, true);
+
 	RAIIWrapper<GLFWwindow*> window(glfwCreateWindow(800, 600, "Fractal Renderer", nullptr, nullptr), glfwDestroyWindow);
 
 	if (!window)
@@ -212,8 +216,6 @@ int main()
 
 		glDebugMessageCallbackARB(glErrorCallback, nullptr);
 	}*/
-
-	glfwSwapInterval(1);
 
 	RAIIWrapper<GLuint> vertexArray(glCreate(VertexArray)(), glDelete(VertexArray));
 
@@ -300,14 +302,6 @@ int main()
 		{
 			glfwPollEvents();
 
-			if (iterate)
-			{
-				if (fractal)
-				{
-					fractal->iterate(iterationsPerFrame);
-				}
-			}
-
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 
@@ -362,6 +356,10 @@ int main()
 						}
 					}
 
+					ImGui::Separator();
+
+					ImGui::MenuItem("VSync", nullptr, &vsync);
+
 					ImGui::EndMenu();
 				}
 				if (ImGui::BeginMenu("About"))
@@ -412,6 +410,16 @@ int main()
 			//ImGui::ShowDemoWindow(nullptr);
 
 			ImGui::EndFrame();
+
+			if (iterate)
+			{
+				if (fractal)
+				{
+					fractal->iterate(iterationsPerFrame);
+				}
+			}
+
+			glfwSwapInterval(static_cast<int>(vsync));
 
 			glfwGetFramebufferSize(window, &width, &height);
 
