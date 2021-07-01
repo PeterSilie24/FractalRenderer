@@ -162,8 +162,10 @@ namespace fractals
 		GLint locationColorCounter;
 		glm::vec3 colorPrimary;
 		glm::vec3 colorSecondary;
+		glm::vec3 colorBackground;
 		GLint locationColorPrimary;
 		GLint locationColorSecondary;
+		GLint locationColorBackground;
 
 		RAIIWrapper<GLuint> textureColor;
 		RAIIWrapper<GLuint> programRender;
@@ -219,7 +221,7 @@ namespace fractals
 	public:
 		Affine(const glm::ivec2& size, const Fractal& fractal, const InitialSet& initialSet = InitialSet()) :
 			initialSet(initialSet), viewport(fractal.viewport), affineTransforms(fractal.affineTransforms),
-			colorPrimary(glm::vec3(0.0, 1.0, 0.0)), colorSecondary(glm::vec3(1.0, 0.0, 0.0)), counter(1), size(size)
+			colorPrimary(glm::vec3(0.0, 1.0, 0.0)), colorSecondary(glm::vec3(1.0, 0.0, 0.0)), colorBackground(glm::vec3(0.0, 0.0, 0.0)), counter(1), size(size)
 		{
 			if (this->initialSet.points.size() == 0)
 			{
@@ -253,6 +255,7 @@ namespace fractals
 				
 				uniform vec3 colorPrimary;
 				uniform vec3 colorSecondary;
+				uniform vec3 colorBackground;
 
 				out vec4 color;
 
@@ -264,13 +267,13 @@ namespace fractals
 					{
 						color = vec4(colorPrimary, 1.0);
 					}
-					else if (value > 0)
+					else if (value > 0u)
 					{
-						color = vec4(float(value + 1u) / float(counter + 1u) * colorSecondary, 1.0);
+						color = vec4(mix(colorBackground, colorSecondary, float(value + 1u) / float(counter + 1u)), 1.0);
 					}
 					else
 					{
-						color = vec4(0.0, 0.0, 0.0, 0.0);
+						color = vec4(colorBackground, 1.0);
 					}
 				}
 			);
@@ -281,6 +284,7 @@ namespace fractals
 
 			this->locationColorPrimary = glGetUniformLocation(this->programColor, "colorPrimary");
 			this->locationColorSecondary = glGetUniformLocation(this->programColor, "colorSecondary");
+			this->locationColorBackground = glGetUniformLocation(this->programColor, "colorBackground");
 
 			
 			fragmentShaderCode = CODE(\
@@ -314,7 +318,7 @@ namespace fractals
 
 					vec2 pos = toScreen(fromScreen(screen, viewportRequested), viewport);
 
-					color = vec4(texture(sampler, pos));
+					color = texture(sampler, pos);
 				}
 			);
 
@@ -598,6 +602,7 @@ namespace fractals
 
 			glUniform3fv(this->locationColorPrimary, 1, reinterpret_cast<const GLfloat*>(&this->colorPrimary));
 			glUniform3fv(this->locationColorSecondary, 1, reinterpret_cast<const GLfloat*>(&this->colorSecondary));
+			glUniform3fv(this->locationColorBackground, 1, reinterpret_cast<const GLfloat*>(&this->colorBackground));
 
 			glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 
@@ -624,6 +629,7 @@ namespace fractals
 			glUniform4fv(this->locationViewportRequested, 1, reinterpret_cast<const GLfloat*>(&fViewportRequested));
 
 			glBindTexture(GL_TEXTURE_2D, this->textureColor);
+			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, reinterpret_cast<GLfloat*>(&this->colorBackground));
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
@@ -677,6 +683,7 @@ namespace fractals
 			{
 				ImGui::ColorEdit3("Primary Color", reinterpret_cast<float*>(&this->colorPrimary));
 				ImGui::ColorEdit3("Secondary Color", reinterpret_cast<float*>(&this->colorSecondary));
+				ImGui::ColorEdit3("Background Color", reinterpret_cast<float*>(&this->colorBackground));
 
 				ImGui::TreePop();
 			}
