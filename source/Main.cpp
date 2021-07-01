@@ -228,6 +228,69 @@ int main()
 
 	ImGui::StyleColorsDark();
 
+	ImGuiStyle* style = &ImGui::GetStyle();
+
+	style->WindowPadding = ImVec2(15.0f, 15.0f);
+	style->WindowRounding = 5.0f;
+	style->FramePadding = ImVec2(5.0f, 5.0f);
+	style->FrameRounding = 5.0f;
+
+	style->IndentSpacing = 25.0f;
+	style->ItemSpacing = ImVec2(10.0f, 7.5f);
+	style->ItemInnerSpacing = ImVec2(10.0f, 7.5f);
+
+	style->ScrollbarSize = 10.0f;
+	style->ScrollbarRounding = 10.0f;
+	style->GrabMinSize = 5.0f;
+	style->GrabRounding = 5.0f;
+
+	style->Colors[ImGuiCol_Text] = ImVec4(0.825f, 0.825f, 0.825f, 1.00f);
+	style->Colors[ImGuiCol_TextDisabled] = ImVec4(0.75f, 0.75f, 0.75f, 0.5f);
+
+	style->Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.65f);
+	style->Colors[ImGuiCol_ChildBg] = style->Colors[ImGuiCol_WindowBg];
+
+	style->Colors[ImGuiCol_MenuBarBg] = ImVec4(0.1f, 0.1f, 0.1f, 0.8f);
+	style->Colors[ImGuiCol_PopupBg] = style->Colors[ImGuiCol_MenuBarBg];
+	
+	style->Colors[ImGuiCol_Border] = ImVec4(0.75f, 0.75f, 0.75f, 0.25f);
+	style->Colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+
+	style->Colors[ImGuiCol_Button] = ImVec4(0.125f, 0.125f, 0.125f, 0.75f);
+	style->Colors[ImGuiCol_ButtonHovered] = ImVec4(0.33f, 0.33f, 0.33f, 0.9f);
+	style->Colors[ImGuiCol_ButtonActive] = ImVec4(0.5f, 0.5f, 0.5f, 0.9f);
+
+	style->Colors[ImGuiCol_CheckMark] = ImVec4(0.8f, 0.8f, 0.8f, 0.33f);
+
+	style->Colors[ImGuiCol_SliderGrab] = style->Colors[ImGuiCol_ButtonActive];
+	style->Colors[ImGuiCol_SliderGrabActive] = style->Colors[ImGuiCol_Button];
+
+	style->Colors[ImGuiCol_FrameBg] = style->Colors[ImGuiCol_Button];
+	style->Colors[ImGuiCol_FrameBgHovered] = style->Colors[ImGuiCol_ButtonHovered];
+	style->Colors[ImGuiCol_FrameBgActive] = style->Colors[ImGuiCol_ButtonActive];
+
+	style->Colors[ImGuiCol_Header] = style->Colors[ImGuiCol_FrameBg];
+	style->Colors[ImGuiCol_HeaderHovered] = style->Colors[ImGuiCol_FrameBgHovered];
+	style->Colors[ImGuiCol_HeaderActive] = style->Colors[ImGuiCol_FrameBgActive];
+
+	style->Colors[ImGuiCol_TitleBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+	style->Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.0f, 0.0f, 0.0f, 0.6f);
+	style->Colors[ImGuiCol_TitleBgActive] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	style->Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+	style->Colors[ImGuiCol_ScrollbarGrab] = style->Colors[ImGuiCol_Button];
+	style->Colors[ImGuiCol_ScrollbarGrabHovered] = style->Colors[ImGuiCol_ButtonHovered];
+	style->Colors[ImGuiCol_ScrollbarGrabActive] = style->Colors[ImGuiCol_ButtonActive];
+
+	style->Colors[ImGuiCol_ResizeGrip] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+	style->Colors[ImGuiCol_ResizeGripHovered] = style->Colors[ImGuiCol_ButtonHovered];
+	style->Colors[ImGuiCol_ResizeGripActive] = style->Colors[ImGuiCol_ButtonActive];
+
+	//io.Fonts->AddFontFromFileTTF("", 10);
+	//io.Fonts->AddFontFromFileTTF("", 12);
+	//io.Fonts->AddFontFromFileTTF("", 14);
+	//io.Fonts->AddFontFromFileTTF("", 18);
+
 	RAIIWrapper<bool> imGuiGlfwIsInit(ImGui_ImplGlfw_InitForOpenGL(window, true), [](const bool) { ImGui_ImplGlfw_Shutdown(); });
 	RAIIWrapper<bool> imGuiOpenGLIsInit(ImGui_ImplOpenGL3_Init("#version 420"), [](const bool) { ImGui_ImplOpenGL3_Shutdown(); });
 
@@ -341,7 +404,7 @@ int main()
 
 			if (ImGui::CollapsingHeader("Info", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				ImGui::Text("Frametime: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+				ImGui::Text("Framerate: %.1f FPS (%.3f ms)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 			}
 
 			ImGui::End();
