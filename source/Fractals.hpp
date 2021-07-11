@@ -58,6 +58,7 @@ namespace fractals
 	{
 		glm::mat2x2 matrix;
 		glm::vec2 offset;
+		float p = 0.0f;
 	};
 
 	class Affine : public Fractal
@@ -156,8 +157,10 @@ namespace fractals
 		GLuint counter;
 		RAIIWrapper<GLuint> framebufferIterate;
 		RAIIWrapper<GLuint> programInit;
+		GLint locationInitSeed;
 		RAIIWrapper<GLuint> programIterate;
 		GLint locationIterateCounter;
+		GLint locationIterateSeed;
 		RAIIWrapper<GLuint> programColor;
 		GLint locationColorCounter;
 		glm::vec3 colorPrimary;
@@ -166,6 +169,8 @@ namespace fractals
 		GLint locationColorPrimary;
 		GLint locationColorSecondary;
 		GLint locationColorBackground;
+		bool falloff;
+		GLint locationFalloff;
 
 		RAIIWrapper<GLuint> textureColor;
 		RAIIWrapper<GLuint> programRender;
@@ -221,7 +226,8 @@ namespace fractals
 	public:
 		Affine(const glm::ivec2& size, const Fractal& fractal, const InitialSet& initialSet = InitialSet()) :
 			initialSet(initialSet), viewport(fractal.viewport), affineTransforms(fractal.affineTransforms),
-			colorPrimary(glm::vec3(0.0, 1.0, 0.0)), colorSecondary(glm::vec3(1.0, 0.0, 0.0)), colorBackground(glm::vec3(0.0, 0.0, 0.0)), counter(1), size(size)
+			colorPrimary(glm::vec3(0.0, 1.0, 0.0)), colorSecondary(glm::vec3(1.0, 0.0, 0.0)), colorBackground(glm::vec3(0.0, 0.0, 0.0)),
+			falloff(true), counter(1), size(size)
 		{
 			if (this->initialSet.points.size() == 0)
 			{
@@ -257,6 +263,8 @@ namespace fractals
 				uniform vec3 colorSecondary;
 				uniform vec3 colorBackground;
 
+				uniform bool falloff;
+
 				out vec4 color;
 
 				void main()
@@ -269,7 +277,7 @@ namespace fractals
 					}
 					else if (value > 0u)
 					{
-						color = vec4(mix(colorBackground, colorSecondary, float(value + 1u) / float(counter + 1u)), 1.0);
+						color = vec4(falloff ? mix(colorBackground, colorSecondary, float(value + 1u) / float(counter + 1u)) : colorSecondary, 1.0);
 					}
 					else
 					{
@@ -285,6 +293,8 @@ namespace fractals
 			this->locationColorPrimary = glGetUniformLocation(this->programColor, "colorPrimary");
 			this->locationColorSecondary = glGetUniformLocation(this->programColor, "colorSecondary");
 			this->locationColorBackground = glGetUniformLocation(this->programColor, "colorBackground");
+
+			this->locationFalloff = glGetUniformLocation(this->programColor, "falloff");
 
 			
 			fragmentShaderCode = CODE(\
@@ -381,6 +391,20 @@ namespace fractals
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
+			bool probabilistic = false;
+
+			std::vector<float> cdf;
+
+			for (const auto& affineTransform : this->affineTransforms)
+			{
+				probabilistic |= affineTransform.p > 0.0f;
+
+				cdf.push_back(affineTransform.p + (cdf.size() > 0 ? *cdf.rbegin() : 0.0f));
+			}
+
+			std::transform(cdf.begin(), cdf.end(), cdf.begin(), [=](float v) { return v / static_cast<float>(*cdf.rbegin()); });
+
+
 			auto fragmentShaderCode = CODE(\
 				#version 420 core \n\
 				#extension GL_ARB_shader_image_load_store : enable \n\
@@ -390,6 +414,7 @@ namespace fractals
 				layout(r32ui, binding = 0) uniform uimage2D image;
 
 				uniform uint counter;
+				uniform float seed;
 
 				out vec4 color;
 			);
@@ -406,6 +431,13 @@ namespace fractals
 				vec2 toScreen(const vec2 pos)
 				{
 					return (pos - viewport.xz) / (viewport.yw - viewport.xz);
+				}
+
+				float noise(vec2 xy, float seed)
+				{
+					float golden_ratio = 1.61803398874989484820459;
+
+					return fract(tan(distance(xy * golden_ratio, xy) * seed) * xy.x);
 				}
 
 				void main()
@@ -428,8 +460,23 @@ namespace fractals
 						vec2 offset;
 			);
 
-			for (const auto& affineTransform : this->affineTransforms)
+			if (probabilistic)
 			{
+				fragmentShaderCode += "float random = noise(gl_FragCoord.xy, seed + fract(float(" + std::to_string(std::rand() % this->affineTransforms.size()) + ") / " + std::to_string(this->affineTransforms.size()) + "));";
+				fragmentShaderCode += "if (false) { }";
+			}
+
+			for (std::size_t i = 0; i < this->affineTransforms.size(); i++)
+			{
+				const auto& affineTransform = this->affineTransforms[i];
+				const auto& f = cdf[i];
+
+				if (probabilistic)
+				{
+					fragmentShaderCode += "else if (random <= " + std::to_string(f) + ")";
+					fragmentShaderCode += "{";
+				}
+
 				fragmentShaderCode += "matrix[0] = vec2(" + std::to_string(affineTransform.matrix[0].x) + ", " + std::to_string(affineTransform.matrix[0].y) + ");";
 				fragmentShaderCode += "matrix[1] = vec2(" + std::to_string(affineTransform.matrix[1].x) + ", " + std::to_string(affineTransform.matrix[1].y) + ");";
 				fragmentShaderCode += "offset = vec2(" + std::to_string(affineTransform.offset.x) + ", " + std::to_string(affineTransform.offset.y) + ");";
@@ -454,6 +501,11 @@ namespace fractals
 
 						imageAtomicExchange(image, index, newValue);
 				);
+
+				if (probabilistic)
+				{
+					fragmentShaderCode += "}";
+				}
 			}
 
 			fragmentShaderCode += CODE(
@@ -464,6 +516,7 @@ namespace fractals
 			this->programIterate = gl::compileAndLinkShaders(this->vertexShaderCode, fragmentShaderCode);
 
 			this->locationIterateCounter = glGetUniformLocation(this->programIterate, "counter");
+			this->locationIterateSeed = glGetUniformLocation(this->programIterate, "seed");
 
 
 			this->compileInitialSetProgram();
@@ -488,17 +541,14 @@ namespace fractals
 
 				layout(r32ui, binding = 0) uniform uimage2D image;
 
+				uniform float seed;
+
 				out vec4 color;
 			);
 
 			fragmentShaderCode += "ivec2 size = ivec2(" + std::to_string(size.x) + ", " + std::to_string(size.y) + ");";
 
 			fragmentShaderCode += CODE(
-				float rand(vec2 seed)
-				{
-					return fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453);
-				}
-				
 				float noise(vec2 xy, float seed)
 				{
 					float golden_ratio = 1.61803398874989484820459;
@@ -508,7 +558,7 @@ namespace fractals
 
 				void main()
 				{
-					float random = noise(gl_FragCoord.xy, 1.0);
+					float random = noise(gl_FragCoord.xy, seed);
 
 					ivec2 pixel = ivec2(gl_FragCoord.xy);
 					vec2 position = gl_FragCoord.xy / vec2(size);
@@ -546,6 +596,8 @@ namespace fractals
 			);
 
 			this->programInit = gl::compileAndLinkShaders(this->vertexShaderCode, fragmentShaderCode);
+
+			this->locationInitSeed = glGetUniformLocation(this->programInit, "seed");
 		}
 
 	public:
@@ -556,6 +608,11 @@ namespace fractals
 			glViewport(0, 0, this->size.x, this->size.y);
 
 			glUseProgram(this->programInit);
+
+			thread_local auto begin = std::chrono::high_resolution_clock::now();
+			auto end = std::chrono::high_resolution_clock::now();
+
+			glUniform1f(this->locationInitSeed, 1.5f + std::sin(static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() % 65536)));
 
 			glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
 
@@ -580,6 +637,11 @@ namespace fractals
 
 				glUniform1ui(this->locationIterateCounter, ++this->counter);
 
+				thread_local auto begin = std::chrono::high_resolution_clock::now();
+				auto end = std::chrono::high_resolution_clock::now();
+
+				glUniform1f(this->locationIterateSeed, 1.5f + std::sin(static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() % 65536)));
+
 				glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
 
 				glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -603,6 +665,8 @@ namespace fractals
 			glUniform3fv(this->locationColorPrimary, 1, reinterpret_cast<const GLfloat*>(&this->colorPrimary));
 			glUniform3fv(this->locationColorSecondary, 1, reinterpret_cast<const GLfloat*>(&this->colorSecondary));
 			glUniform3fv(this->locationColorBackground, 1, reinterpret_cast<const GLfloat*>(&this->colorBackground));
+
+			glUniform1i(this->locationFalloff, static_cast<GLint>(this->falloff));
 
 			glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32UI);
 
@@ -688,18 +752,24 @@ namespace fractals
 				{
 					ImGui::Separator();
 
-					float values[6] = {
+					float values[8] = {
 						this->affineTransforms[i].matrix[0][0],
 						this->affineTransforms[i].matrix[0][1],
 						this->affineTransforms[i].offset[0],
 						this->affineTransforms[i].matrix[1][0],
 						this->affineTransforms[i].matrix[1][1],
 						this->affineTransforms[i].offset[1],
+						this->affineTransforms[i].p,
+						this->affineTransforms[i].p,
 					};
 
-					changed |= ImGui::SliderFloat3(("##" + std::to_string(2 * i + 0)).c_str(), values, -2.0f, 2.0f);
+					changed |= ImGui::SliderFloat(("##" + std::to_string(3 * i + 0)).c_str(), values, -2.0f, 2.0f);
 
-					changed |= ImGui::SliderFloat3(("##" + std::to_string(2 * i + 1)).c_str(), values + 3, -2.0f, 2.0f);
+					ImGui::SameLine();
+
+					changed |= ImGui::SliderFloat2(("##" + std::to_string(3 * i + 1)).c_str(), values + 6, 0.0f, 1.0f);
+
+					changed |= ImGui::SliderFloat3(("##" + std::to_string(3 * i + 2)).c_str(), values + 3, -2.0f, 2.0f);
 
 					ImGui::SameLine();
 
@@ -719,6 +789,7 @@ namespace fractals
 						this->affineTransforms[i].matrix[1][0] = values[3];
 						this->affineTransforms[i].matrix[1][1] = values[4];
 						this->affineTransforms[i].offset[1] = values[5];
+						this->affineTransforms[i].p = values[6];
 
 						i++;
 					}
@@ -748,6 +819,8 @@ namespace fractals
 				ImGui::ColorEdit3("Primary Color", reinterpret_cast<float*>(&this->colorPrimary));
 				ImGui::ColorEdit3("Secondary Color", reinterpret_cast<float*>(&this->colorSecondary));
 				ImGui::ColorEdit3("Background Color", reinterpret_cast<float*>(&this->colorBackground));
+
+				ImGui::Checkbox("Falloff", &this->falloff);
 
 				ImGui::TreePop();
 			}
