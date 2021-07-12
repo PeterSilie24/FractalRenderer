@@ -1,6 +1,7 @@
 #pragma once
 
 #include "OpenGLHelper.hpp"
+#include "Image.hpp"
 
 namespace fractals
 {
@@ -51,6 +52,19 @@ namespace fractals
 		virtual void options()
 		{
 
+		}
+
+		virtual bool save(const std::string& path) const
+		{
+			GLint viewport[4];
+
+			glGetIntegerv(GL_VIEWPORT, viewport);
+
+			image::Image image(viewport[2], viewport[3]);
+
+			glReadPixels(viewport[0], viewport[1], viewport[2], viewport[3], GL_RGBA, GL_UNSIGNED_BYTE, image.pixels.data());
+
+			return image::save(path, image, true);
 		}
 	};
 
@@ -122,7 +136,7 @@ namespace fractals
 				{ glm::mat2x2(glm::vec2(+0.00f, +0.00f), glm::vec2(+0.00f, +0.16f)), glm::vec2(+0.000f, +0.000f) },
 				{ glm::mat2x2(glm::vec2(+0.85f, -0.04f), glm::vec2(+0.04f, +0.85f)), glm::vec2(+0.000f, +0.160f) },
 				{ glm::mat2x2(glm::vec2(+0.20f, +0.23f), glm::vec2(-0.26f, +0.22f)), glm::vec2(+0.000f, +0.160f) },
-				{ glm::mat2x2(glm::vec2(-0.15f, +0.26f), glm::vec2(+0.28f, +0.24f)), glm::vec2(+0.000f, +0.044f) }
+				{ glm::mat2x2(glm::vec2(-0.15f, +0.26f), glm::vec2(+0.28f, +0.24f)), glm::vec2(+0.000f, +0.044f) },
 			};
 
 			Viewport viewport(-0.22, 0.27, 0.00, 1.00);
@@ -135,10 +149,24 @@ namespace fractals
 			std::vector<AffineTransform> affineTransforms = {
 				{ glm::mat2x2(0.5f), glm::vec2(0.0f) },
 				{ glm::mat2x2(0.5f), glm::vec2(0.5f, 0.0f) },
-				{ glm::mat2x2(0.5f), glm::vec2(0.0f, 0.5f) }
+				{ glm::mat2x2(0.5f), glm::vec2(0.0f, 0.5f) },
 			};
 
 			Viewport viewport(0.0, 1.0, 0.0, 1.0);
+
+			return Fractal(viewport, affineTransforms);
+		}
+
+		inline static Fractal createMapleLeaf()
+		{
+			std::vector<AffineTransform> affineTransforms = {
+				{ glm::mat2x2(glm::vec2(+0.14f, +0.00f), glm::vec2(+0.01f, +0.51f)), glm::vec2(-0.0200f, -0.3275f) },
+				{ glm::mat2x2(glm::vec2(+0.43f, -0.45f), glm::vec2(+0.52f, +0.50f)), glm::vec2(+0.3725f, -0.1875f) },
+				{ glm::mat2x2(glm::vec2(+0.45f, +0.47f), glm::vec2(-0.49f, +0.47f)), glm::vec2(-0.4050f, -0.1850f) },
+				{ glm::mat2x2(glm::vec2(+0.49f, +0.00f), glm::vec2(+0.00f, +0.51f)), glm::vec2(+0.0050f, +0.4050f) },
+			};
+
+			Viewport viewport(-1.0, 1.0, -1.0, 1.0);
 
 			return Fractal(viewport, affineTransforms);
 		}
@@ -648,7 +676,7 @@ namespace fractals
 
 			fractals::Fractal::options();
 
-			if (ImGui::TreeNode("Affine Contractions Mappings"))
+			if (ImGui::TreeNode("Affine Contraction Mappings"))
 			{
 				ImGui::BeginGroup();
 
@@ -665,6 +693,10 @@ namespace fractals
 					if (ImGui::MenuItem("Sierpinski Triangle"))
 					{
 						fractal = this->createSierpinskiTriangle();
+					}
+					if (ImGui::MenuItem("Maple Leaf"))
+					{
+						fractal = this->createMapleLeaf();
 					}
 
 					if (fractal.affineTransforms.size() > 0)
@@ -801,7 +833,8 @@ namespace fractals
 						static std::vector<std::pair<std::string, std::string>> distributions = {
 							{ "Sinus", "sin(pi * x) * sin(pi * y) / 4" },
 							{ "Checkerboard", "sin(10 * pi * x) * sin(10 * pi * y) / 4" },
-							{ "Rectangle", "(0.25 < x && x < 0.75 && 0.25 < y && y < 0.75) ? 1 : 0" },
+							{ "Rectangle", "0.25 < x && x < 0.75 && 0.25 < y && y < 0.75 ? 1.0 : 0.0" },
+							{ "Ellipse", "(pow(x - 0.5, 2.0) + pow(y - 0.5, 2.0)) < 0.25 ? 1.0 : 0.0" },
 						};
 
 						for (const auto& distribution : distributions)
@@ -823,6 +856,19 @@ namespace fractals
 				ImGui::TreePop();
 			}
 		}
+
+		virtual bool save(const std::string& path) const override
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
+
+			image::Image image(this->size.x, this->size.y);
+
+			glReadPixels(0, 0, this->size.x, this->size.y, GL_RGBA, GL_UNSIGNED_BYTE, image.pixels.data());
+
+			return image::save(path, image, true);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
 	};
 
 	class BarnsleyFern : public Affine
@@ -840,6 +886,16 @@ namespace fractals
 	public:
 		SierpinskiTriangle(const glm::ivec2& size) :
 			Affine(size, Affine::createSierpinskiTriangle())
+		{
+
+		}
+	};
+
+	class MapleLeaf : public Affine
+	{
+	public:
+		MapleLeaf(const glm::ivec2& size) :
+			Affine(size, Affine::createMapleLeaf())
 		{
 
 		}

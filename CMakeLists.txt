@@ -11,4 +11,4 @@ add_executable(FractalRenderer
     "source/Fractals.hpp"
     )
 
-target_link_libraries(FractalRenderer glm glfw glad imgui)
+target_link_libraries(FractalRenderer glm glfw glad imgui stb)

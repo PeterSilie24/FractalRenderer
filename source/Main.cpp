@@ -1,5 +1,6 @@
 #include "OpenGLHelper.hpp"
 #include "Fractals.hpp"
+#include "Image.hpp"
 
 void APIENTRY glfwErrorCallback(int error, const char* description)
 {
@@ -27,6 +28,8 @@ bool anyWindowFocused = false;
 std::int32_t iterationsPerFrame = 1;
 
 fractals::Viewport viewport(0.0, 0.0, 0.0, 10.0);
+
+bool save = false;
 
 template <typename TFractal, typename... Arguments>
 void setFractal(Arguments&&... arguments)
@@ -60,6 +63,7 @@ std::vector<FractalSelector> fractalSelectors(
 	{
 		FractalSelector::create<fractals::BarnsleyFern>("Barnsley Fern", glm::ivec2(4096, 4096)),
 		FractalSelector::create<fractals::SierpinskiTriangle>("Sierpinski Triangle", glm::ivec2(4096, 4096)),
+		FractalSelector::create<fractals::MapleLeaf>("Maple Leaf", glm::ivec2(4096, 4096)),
 		FractalSelector::create<fractals::Mandelbrot>("Mandelbrot", glm::ivec2(1920, 1080), viewport, 2),
 	}
 );
@@ -333,6 +337,13 @@ int main()
 
 					ImGui::Separator();
 
+					if (ImGui::MenuItem("Save", "", false, fractal != nullptr))
+					{
+						save = true;
+					}
+
+					ImGui::Separator();
+
 					if (ImGui::MenuItem("Iteration Step", "SPACE", nullptr, !iterate))
 					{
 						if (fractal)
@@ -444,6 +455,16 @@ int main()
 				viewport.right += x;
 
 				fractal->render(glm::ivec2(width, height), viewport);
+			}
+
+			if (save)
+			{
+				if (fractal)
+				{
+					fractal->save("image.png");
+				}
+
+				save = false;
 			}
 
 			ImGui::Render();
