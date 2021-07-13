@@ -439,7 +439,7 @@ int main()
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			if (fractal)
+			if (fractal && width > 0 && height > 0)
 			{
 				double x = (viewport.left + viewport.right) / 2.0;
 

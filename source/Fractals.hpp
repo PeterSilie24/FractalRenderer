@@ -795,7 +795,7 @@ namespace fractals
 						this->affineTransforms[i].p,
 					};
 
-					changed |= ImGui::SliderFloat(("##" + std::to_string(3 * i + 0)).c_str(), values, -2.0f, 2.0f);
+					changed |= ImGui::SliderFloat3(("##" + std::to_string(3 * i + 0)).c_str(), values, -2.0f, 2.0f);
 
 					ImGui::SameLine();
 
