@@ -62,7 +62,7 @@ namespace image
 			ext = std::string(path.begin() + pos + 1, path.end());
 		}
 
-		std::transform(ext.begin(), ext.end(), ext.begin(), std::tolower);
+		std::transform(ext.begin(), ext.end(), ext.begin(), tolower);
 
 		if (ext == "png")
 		{

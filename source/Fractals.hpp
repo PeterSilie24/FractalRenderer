@@ -35,7 +35,7 @@ namespace fractals
 	public:
 		virtual void iterate(const std::int32_t iterations = 1) = 0;
 
-		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) = 0;
+		virtual void render(const glm::ivec2& resolution, const Viewport& viewport) = 0;
 
 		virtual void reset() = 0;
 
@@ -680,7 +680,7 @@ namespace fractals
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) override
+		virtual void render(const glm::ivec2& resolution, const Viewport& viewport) override
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
 
@@ -1444,7 +1444,7 @@ namespace fractals
 			glGenerateMipmap(GL_TEXTURE_2D);
 		}
 
-		virtual void render(const glm::ivec2 resolution, const Viewport& viewport) override
+		virtual void render(const glm::ivec2& resolution, const Viewport& viewport) override
 		{
 			glUseProgram(this->programRender);
 

@@ -16,7 +16,7 @@ bool vsync = 1;
 
 std::shared_ptr<fractals::Fractal> fractal;
 
-bool iterate = true;
+bool autoIterate = true;
 
 int width = 1, height = 1;
 bool moving = false;
@@ -29,18 +29,27 @@ std::int32_t iterationsPerFrame = 1;
 
 fractals::Viewport viewport(0.0, 0.0, 0.0, 10.0);
 
-bool save = false;
+bool saveImage = false;
 
 template <typename TFractal, typename... Arguments>
 void setFractal(Arguments&&... arguments)
 {
 	fractal = nullptr;
 
-	fractal = std::make_shared<TFractal>(std::forward<Arguments>(arguments)...);
+	try
+	{
+		fractal = std::make_shared<TFractal>(std::forward<Arguments>(arguments)...);
 
-	viewport = fractal->getPreferredViewport();
+		viewport = fractal->getPreferredViewport();
 
-	iterationsPerFrame = fractal->getPreferredIterationsPerFrame();
+		iterationsPerFrame = fractal->getPreferredIterationsPerFrame();
+	}
+	catch(const std::exception& error)
+	{
+		fractal = nullptr;
+
+		std::cerr << error.what() << std::endl;
+	}
 }
 
 struct FractalSelector
@@ -70,6 +79,108 @@ std::vector<FractalSelector> fractalSelectors(
 
 const FractalSelector* selectedFractalSelector = nullptr;
 
+void iterate(const std::int32_t iterations = 1)
+{
+	if (fractal)
+	{
+		try
+		{
+			fractal->iterate(iterations);
+		}
+		catch(const std::exception& error)
+		{
+			fractal = nullptr;
+
+			std::cerr << error.what() << std::endl;
+		}
+	}
+}
+
+void reset()
+{
+	if (fractal)
+	{
+		try
+		{
+			fractal->reset();
+		}
+		catch(const std::exception& error)
+		{
+			fractal = nullptr;
+
+			std::cerr << error.what() << std::endl;
+		}
+	}
+}
+
+void resetViewport()
+{
+	if (fractal)
+	{
+		try
+		{
+			viewport = fractal->getPreferredViewport();
+		}
+		catch(const std::exception& error)
+		{
+			fractal = nullptr;
+
+			std::cerr << error.what() << std::endl;
+		}
+	}	
+}
+
+void options()
+{
+	if (fractal)
+	{
+		try
+		{
+			fractal->options();
+		}
+		catch(const std::exception& error)
+		{
+			fractal = nullptr;
+
+			std::cerr << error.what() << std::endl;
+		}
+	}
+}
+
+void render(const glm::ivec2& resolution, const fractals::Viewport& viewport)
+{
+	if (fractal)
+	{
+		try
+		{
+			fractal->render(resolution, viewport);
+		}
+		catch(const std::exception& error)
+		{
+			fractal = nullptr;
+
+			std::cerr << error.what() << std::endl;
+		}
+	}
+}
+
+void save(const std::string& path)
+{
+	if (fractal)
+	{
+		try
+		{
+			fractal->save(path);
+		}
+		catch(const std::exception& error)
+		{
+			fractal = nullptr;
+
+			std::cerr << error.what() << std::endl;
+		}
+	}
+}
+
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	if (!anyWindowFocused/* || windowFocused*/)
@@ -80,25 +191,19 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 			{
 			case GLFW_KEY_SPACE:
 			{
-				if (fractal)
-				{
-					fractal->iterate();
-				}
+				iterate();
 
 				break;
 			}
 			case GLFW_KEY_ENTER:
 			{
-				iterate = !iterate;
+				autoIterate = !autoIterate;
 
 				break;
 			}
 			case GLFW_KEY_BACKSPACE:
 			{
-				if (fractal)
-				{
-					fractal->reset();
-				}
+				reset();
 
 				break;
 			}
@@ -339,20 +444,17 @@ int main()
 
 					if (ImGui::MenuItem("Save", "", false, fractal != nullptr))
 					{
-						save = true;
+						saveImage = true;
 					}
 
 					ImGui::Separator();
 
-					if (ImGui::MenuItem("Iteration Step", "SPACE", nullptr, !iterate))
+					if (ImGui::MenuItem("Iteration Step", "SPACE", nullptr, !autoIterate))
 					{
-						if (fractal)
-						{
-							fractal->iterate();
-						}
+						iterate();
 					}
 
-					if (ImGui::MenuItem("Auto Iterate", "ENTER", &iterate))
+					if (ImGui::MenuItem("Auto Iterate", "ENTER", &autoIterate))
 					{
 
 					}
@@ -361,10 +463,7 @@ int main()
 
 					if (ImGui::MenuItem("Reset", "BACKSPACE"))
 					{
-						if (fractal)
-						{
-							fractal->reset();
-						}
+						reset();
 					}
 
 					ImGui::Separator();
@@ -387,10 +486,7 @@ int main()
 			{
 				ImGui::SliderInt("Iterations per Frame", &iterationsPerFrame, 1, 1000);
 
-				if (fractal)
-				{
-					fractal->options();
-				}
+				options();
 			}
 
 			if (ImGui::CollapsingHeader("Viewport", ImGuiTreeNodeFlags_DefaultOpen))
@@ -407,7 +503,7 @@ int main()
 
 				if (fractal && ImGui::Button("Reset##Viewport"))
 				{
-					viewport = fractal->getPreferredViewport();
+					resetViewport();
 				}
 			}
 
@@ -422,12 +518,9 @@ int main()
 
 			ImGui::EndFrame();
 
-			if (iterate)
+			if (autoIterate)
 			{
-				if (fractal)
-				{
-					fractal->iterate(iterationsPerFrame);
-				}
+				iterate(iterationsPerFrame);
 			}
 
 			glfwSwapInterval(static_cast<int>(vsync));
@@ -439,7 +532,7 @@ int main()
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			if (fractal && width > 0 && height > 0)
+			if (width > 0 && height > 0)
 			{
 				double x = (viewport.left + viewport.right) / 2.0;
 
@@ -454,17 +547,14 @@ int main()
 				viewport.left += x;
 				viewport.right += x;
 
-				fractal->render(glm::ivec2(width, height), viewport);
+				render(glm::ivec2(width, height), viewport);
 			}
 
-			if (save)
+			if (saveImage)
 			{
-				if (fractal)
-				{
-					fractal->save("image.png");
-				}
+				save("image.png");
 
-				save = false;
+				saveImage = false;
 			}
 
 			ImGui::Render();

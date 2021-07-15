@@ -1,6 +1,8 @@
 #pragma once
 
 #include <iostream>
+#include <cctype>
+#include <clocale>
 #include <iomanip>
 #include <sstream>
 #include <string>
