@@ -54,17 +54,22 @@ namespace fractals
 
 		}
 
-		virtual bool save(const std::string& path) const
+		virtual void dropImage(const img::ImagePtr& image)
+		{
+
+		}
+
+		virtual img::ImagePtr exportImage() const
 		{
 			GLint viewport[4];
 
 			glGetIntegerv(GL_VIEWPORT, viewport);
 
-			image::Image image(viewport[2], viewport[3]);
+			img::ImagePtr image = img::make(viewport[2], viewport[3]);
 
-			glReadPixels(viewport[0], viewport[1], viewport[2], viewport[3], GL_RGBA, GL_UNSIGNED_BYTE, image.pixels.data());
+			glReadPixels(viewport[0], viewport[1], viewport[2], viewport[3], GL_RGBA, GL_UNSIGNED_BYTE, image->pixels.data());
 
-			return image::save(path, image, true);
+			return image;
 		}
 	};
 
@@ -82,41 +87,35 @@ namespace fractals
 		{
 			enum class Type : int
 			{
-				Points = 0,
-				Distribution = 1,
-				Both = 2,
-				Invalid,
+				Invalid = 0b000,
+				Points = 0b001,
+				Distribution = 0b010,
+				Image = 0b100,
 			};
 
-			InitialSet(const std::vector<glm::vec2>& points = { }, const std::string& distribution = "sin(pi * x) * sin(pi * y) / 4") :
-				points(points), distribution(distribution)
+			std::vector<glm::vec2> points;
+			std::string distribution;
+			img::ImagePtr image;
+
+			InitialSet(const std::vector<glm::vec2>& points = { }, const std::string& distribution = "sin(pi * x) * sin(pi * y) / 4", const img::ImagePtr& image = nullptr) :
+				points(points), distribution(distribution), image(image)
 			{
-				this->type = this->getType();
+				
 			}
 
 			Type getType() const
 			{
-				if (this->points.size() > 0 && this->distribution == "")
-				{
-					return Type::Points;
-				}
-				else if (this->points.size() == 0 && this->distribution != "")
-				{
-					return Type::Distribution;
-				}
-				else if (this->points.size() > 0 && this->distribution != "")
-				{
-					return Type::Both;
-				}
-				else
-				{
-					return Type::Invalid;
-				}
+				return static_cast<Type>(
+					  ((this->points.size() > 0) * static_cast<int>(Type::Points))
+					| ((this->distribution != "") * static_cast<int>(Type::Distribution))
+					| ((this->image != nullptr) * static_cast<int>(Type::Image))
+				);
 			}
 
-			Type type;
-			std::vector<glm::vec2> points;
-			std::string distribution;
+			bool hasType(const Type type) const
+			{
+				return static_cast<int>(this->getType()) & static_cast<int>(type);
+			}
 		};
 
 		struct Fractal
@@ -176,6 +175,7 @@ namespace fractals
 		std::vector<AffineTransform> affineTransforms;
 
 		InitialSet initialSet;
+		RAIIWrapper<GLuint> textureInitialSet;
 
 		std::vector<std::uint32_t> pixels;
 		RAIIWrapper<GLuint> textureSet;
@@ -257,12 +257,6 @@ namespace fractals
 			colorPrimary(glm::vec3(0.0, 1.0, 0.0)), colorSecondary(glm::vec3(1.0, 0.0, 0.0)), colorBackground(glm::vec3(0.0, 0.0, 0.0)),
 			falloff(true), counter(1), size(size)
 		{
-			if (this->initialSet.points.size() == 0)
-			{
-				this->initialSet.points.push_back(glm::vec2(0.0f));
-			}
-
-
 			this->vertexShaderCode = CODE(\
 				#version 420 core \n\
 
@@ -561,18 +555,45 @@ namespace fractals
 				pixels.push_back(this->findBestPixel(glm::ivec2(0), this->size - 1, this->size, this->viewport, point));
 			}
 
+
+			this->textureInitialSet = nullptr;
+
+			if (this->initialSet.hasType(InitialSet::Type::Image))
+			{
+				this->textureInitialSet = RAIIWrapper<GLuint>(glCreate(Texture)(), glDelete(Texture));
+
+				glBindTexture(GL_TEXTURE_2D, this->textureInitialSet);
+
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->initialSet.image->width, this->initialSet.image->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, this->initialSet.image->pixels.data());
+
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+				glGenerateMipmap(GL_TEXTURE_2D);
+			}
+
+
 			auto fragmentShaderCode = CODE(\
 				#version 420 core \n\
 				#extension GL_ARB_shader_image_load_store : enable \n\
 
 				precision highp float;
 
-				layout(r32ui, binding = 0) uniform uimage2D image;
-
+				layout(r32ui, binding = 0) uniform uimage2D imageSet;
+				
 				uniform float seed;
 
 				out vec4 color;
 			);
+
+			if (this->initialSet.hasType(InitialSet::Type::Image) && this->textureInitialSet)
+			{
+				fragmentShaderCode += CODE(
+					uniform sampler2D samplerInitialSet;
+				);
+			}
 
 			fragmentShaderCode += "ivec2 size = ivec2(" + std::to_string(size.x) + ", " + std::to_string(size.y) + ");";
 
@@ -595,25 +616,34 @@ namespace fractals
 					float y = position.y;
 					float pi = 3.1415926535897932384626433832795f;
 
-					float factor = 0.0f;
+					float value = 0.0f;
 			);
 
-			if (this->initialSet.distribution != "" && (this->initialSet.type == InitialSet::Type::Distribution || this->initialSet.type == InitialSet::Type::Both))
+			if (this->initialSet.hasType(InitialSet::Type::Distribution))
 			{
-				fragmentShaderCode += "factor = " + this->initialSet.distribution + ";";
+				fragmentShaderCode += "value = max(value, " + this->initialSet.distribution + ");";
+			}
+
+			if (this->initialSet.hasType(InitialSet::Type::Image) && this->textureInitialSet)
+			{
+				fragmentShaderCode += CODE(
+					vec4 texel = texture(samplerInitialSet, position);
+
+					value = max(value, texel.a * (texel.r + texel.g + texel.b) / 3.0);
+				);
 			}
 
 			fragmentShaderCode += CODE(
-					imageStore(image, pixel, uvec4(factor > 0.0 ? uint(random <= factor) : 0u, 0u, 0u, 0u));
+					imageStore(imageSet, pixel, uvec4(value > 0.0 ? uint(random <= value) : 0u, 0u, 0u, 0u));
 				);
 
-			if (this->initialSet.type == InitialSet::Type::Points || this->initialSet.type == InitialSet::Type::Both)
+			if (this->initialSet.hasType(InitialSet::Type::Points))
 			{
 				for (const auto& pixel : pixels)
 				{
 					fragmentShaderCode += "if (pixel.x == " + std::to_string(pixel.x) + " && pixel.y == " + std::to_string(pixel.y) + ")";
 					fragmentShaderCode += "{";
-					fragmentShaderCode += "   imageStore(image, pixel, uvec4(1u, 0u, 0u, 0u)); ";
+					fragmentShaderCode += "   imageStore(imageSet, pixel, uvec4(1u, 0u, 0u, 0u)); ";
 					fragmentShaderCode += "}";
 				}
 			}
@@ -641,6 +671,11 @@ namespace fractals
 			auto end = std::chrono::high_resolution_clock::now();
 
 			glUniform1f(this->locationInitSeed, 1.5f + std::sin(static_cast<float>(std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() % 65536)));
+
+			if (this->initialSet.hasType(InitialSet::Type::Image) && this->textureInitialSet)
+			{
+				glBindTexture(GL_TEXTURE_2D, this->textureInitialSet);
+			}
 
 			glBindImageTexture(0, this->textureSet, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
 
@@ -859,20 +894,31 @@ namespace fractals
 
 			if (ImGui::TreeNode("Initial Set"))
 			{
-				const char* initialSetTypes[] = { "Points", "Distribution", "Both" };
+				const char* initialSetTypes[] = { "Points", "Distribution" };
 
-				if (ImGui::Combo("Type", reinterpret_cast<int*>(&this->initialSet.type), initialSetTypes, sizeof(initialSetTypes) / sizeof(initialSetTypes[0])))
+				static int type = this->initialSet.hasType(InitialSet::Type::Distribution) ? 1 : 0;
+
+				if (ImGui::Combo("Type", &type, initialSetTypes, sizeof(initialSetTypes) / sizeof(initialSetTypes[0])))
 				{
+					if (type == 0)
+					{
+						this->initialSet = InitialSet({ glm::vec2(0.0f) }, "");
+					}
+					else
+					{
+						this->initialSet = InitialSet();
+					}
+
 					this->compileInitialSetProgram();
 
 					this->reset();
 				}
 
-				if (this->initialSet.type == InitialSet::Type::Points || this->initialSet.type == InitialSet::Type::Both)
+				if (this->initialSet.hasType(InitialSet::Type::Points))
 				{
 					ImGui::SliderFloat2("Point", reinterpret_cast<float*>(this->initialSet.points.data()), glm::min(this->viewport.left, this->viewport.bottom), glm::max(this->viewport.right, this->viewport.top));
 				}
-				if (this->initialSet.type == InitialSet::Type::Distribution || this->initialSet.type == InitialSet::Type::Both)
+				if (this->initialSet.hasType(InitialSet::Type::Distribution))
 				{
 					std::vector<char> buffer(glm::max(this->initialSet.distribution.size() + 1llu, 1024llu), '\0');
 
@@ -930,17 +976,26 @@ namespace fractals
 			}
 		}
 
-		virtual bool save(const std::string& path) const override
+		virtual void dropImage(const img::ImagePtr& image) override
+		{
+			this->initialSet = InitialSet({ }, "", image);
+
+			this->compileInitialSetProgram();
+
+			this->reset();
+		}
+
+		virtual img::ImagePtr exportImage() const override
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, this->framebufferIterate);
 
-			image::Image image(this->size.x, this->size.y);
+			img::ImagePtr image = img::make(this->size.x, this->size.y);
 
-			glReadPixels(0, 0, this->size.x, this->size.y, GL_RGBA, GL_UNSIGNED_BYTE, image.pixels.data());
-
-			return image::save(path, image, true);
+			glReadPixels(0, 0, this->size.x, this->size.y, GL_RGBA, GL_UNSIGNED_BYTE, image->pixels.data());
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			return image;
 		}
 	};
 

@@ -170,7 +170,7 @@ void save(const std::string& path)
 	{
 		try
 		{
-			fractal->save(path);
+			img::save(path, fractal->exportImage(), true);
 		}
 		catch(const std::exception& error)
 		{
@@ -276,6 +276,22 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 	}
 }
 
+void dropCallback(GLFWwindow* window, int count, const char** paths)
+{
+	for (int i = 0; i < count; i++)
+	{
+		if (fractal)
+		{
+			img::ImagePtr image = img::load(paths[i], true);
+
+			if (image)
+			{
+				fractal->dropImage(image);
+			}
+		}
+	}
+}
+
 int main()
 {
 	RAIIWrapper<bool> glfwIsInit(static_cast<bool>(glfwInit()), [](const bool) { glfwTerminate(); });
@@ -318,6 +334,8 @@ int main()
 	glfwSetCursorPosCallback(window, cursorPosCallback);
 
 	glfwSetScrollCallback(window, scrollCallback);
+
+	glfwSetDropCallback(window, dropCallback);
 	
 	/*if (gl::extensionAvailable("GL_ARB_debug_output"))
 	{

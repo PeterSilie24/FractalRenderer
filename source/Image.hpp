@@ -7,7 +7,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
-namespace image
+namespace img
 {
 	struct Image
 	{
@@ -29,28 +29,43 @@ namespace image
 		std::size_t height;
 	};
 
-	Image load(const std::string& path)
+	typedef std::shared_ptr<Image> ImagePtr;
+
+	template <typename... Arguments>
+	inline ImagePtr make(Arguments&&... arguments)
 	{
+		return std::make_shared<Image>(arguments...);
+	}
+
+	ImagePtr load(const std::string& path, const bool flip = false)
+	{
+		stbi_set_flip_vertically_on_load(flip);
+
 		int x, y, comp;
 
 		auto pixels = stbi_load(path.c_str(), &x, &y, &comp, STBI_rgb_alpha);
 
 		if (pixels)
 		{
-			Image image(x, y);
+			ImagePtr image = make(x, y);
 
-			std::copy(pixels, pixels + image.pixels.size() * 4, image.pixels.begin());
+			std::memcpy(image->pixels.data(), pixels, image->pixels.size() * 4);
 
 			stbi_image_free(pixels);
 
 			return image;
 		}
 
-		return Image();
+		return ImagePtr();
 	}
 
-	bool save(const std::string& path, const Image& image, const bool flip = false)
+	bool save(const std::string& path, const ImagePtr& image, const bool flip = false)
 	{
+		if (!image)
+		{
+			return false;
+		}
+
 		stbi_flip_vertically_on_write(flip);
 
 		std::string ext = "";
@@ -66,19 +81,19 @@ namespace image
 
 		if (ext == "png")
 		{
-			return stbi_write_png(path.c_str(), image.width, image.height, 4, image.pixels.data(), image.width * 4) != 0;
+			return stbi_write_png(path.c_str(), image->width, image->height, 4, image->pixels.data(), image->width * 4) != 0;
 		}
 		else if (ext == "jpg" || ext == "jpeg")
 		{
-			return stbi_write_jpg(path.c_str(), image.width, image.height, 4, image.pixels.data(), 100) != 0;
+			return stbi_write_jpg(path.c_str(), image->width, image->height, 4, image->pixels.data(), 100) != 0;
 		}
 		else if (ext == "tga")
 		{
-			return stbi_write_tga(path.c_str(), image.width, image.height, 4, image.pixels.data()) != 0;
+			return stbi_write_tga(path.c_str(), image->width, image->height, 4, image->pixels.data()) != 0;
 		}
 		else
 		{
-			return stbi_write_bmp(path.c_str(), image.width, image.height, 4, image.pixels.data()) != 0;
+			return stbi_write_bmp(path.c_str(), image->width, image->height, 4, image->pixels.data()) != 0;
 		}
 	}
 }
