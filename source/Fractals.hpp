@@ -116,6 +116,21 @@ namespace fractals
 			{
 				return static_cast<int>(this->getType()) & static_cast<int>(type);
 			}
+
+			int getMostSignificantTypeIndex() const
+			{
+				int type = static_cast<int>(this->getType());
+				int msb = type ? 0 : -1;
+
+				for (; type >>= 1; msb++);
+
+				return msb;
+			}
+
+			static inline Type getTypeFromIndex(const int index)
+			{
+				return static_cast<Type>(1 << index);
+			}
 		};
 
 		struct Fractal
@@ -894,19 +909,26 @@ namespace fractals
 
 			if (ImGui::TreeNode("Initial Set"))
 			{
-				const char* initialSetTypes[] = { "Points", "Distribution" };
+				const char* initialSetTypes[] = { "Points", "Distribution", "Image" };
 
-				static int type = this->initialSet.hasType(InitialSet::Type::Distribution) ? 1 : 0;
+				int index = this->initialSet.getMostSignificantTypeIndex();
 
-				if (ImGui::Combo("Type", &type, initialSetTypes, sizeof(initialSetTypes) / sizeof(initialSetTypes[0])))
+				if (ImGui::Combo("Type", &index, initialSetTypes, sizeof(initialSetTypes) / sizeof(initialSetTypes[0])))
 				{
-					if (type == 0)
+					switch (InitialSet::getTypeFromIndex(index))
+					{
+					case InitialSet::Type::Points:
 					{
 						this->initialSet = InitialSet({ glm::vec2(0.0f) }, "");
+
+						break;
 					}
-					else
+					case InitialSet::Type::Distribution:
 					{
 						this->initialSet = InitialSet();
+
+						break;
+					}
 					}
 
 					this->compileInitialSetProgram();
@@ -970,6 +992,10 @@ namespace fractals
 
 						ImGui::EndMenu();
 					}
+				}
+				if (this->initialSet.hasType(InitialSet::Type::Image))
+				{
+					ImGui::Text("Drag and Drop an Image.");
 				}
 
 				ImGui::TreePop();
