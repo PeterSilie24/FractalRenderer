@@ -1566,5 +1566,20 @@ namespace fractals
 				this->update(this->resolution, this->viewport, oversampling);
 			}
 		}
+
+		virtual img::ImagePtr exportImage() const override
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, this->framebuffer);
+			glReadBuffer(GL_COLOR_ATTACHMENT2);
+
+			img::ImagePtr image = img::make(this->size.x, this->size.y);
+
+			glReadPixels(0, 0, this->size.x, this->size.y, GL_RGBA, GL_UNSIGNED_BYTE, image->pixels.data());
+
+			glReadBuffer(GL_COLOR_ATTACHMENT0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			return image;
+		}
 	};
 }
