@@ -6,7 +6,7 @@ The implementation is based on the ideas presented in _Fractals Everywhere_ by M
 
 # Eye Candy
 ![SierpinskiTriangle](figures/SierpinskiTriangle.png?raw=true)
-A square-like set was iterated by the contractions for a Sierpinski triangle, where the current iteration was highlighted by the green color and the previous iterations are still visible in red.
+A square-like set was iterated by the contractions for a Sierpinski triangle, where the current iteration was highlighted by the green color and the previous iterations are still visible in shades of red.
 \
 \
 ![Mandelbrot](figures/Mandelbrot.png?raw=true)
